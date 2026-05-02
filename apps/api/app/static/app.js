@@ -7,6 +7,7 @@ const views = {
   brief: "briefView",
   decisions: "decisionsView",
   commitments: "commitmentsView",
+  risks: "risksView",
   meetings: "meetingsView",
   ask: "askView",
   sources: "sourcesView",
@@ -155,6 +156,24 @@ async function loadViewData() {
           </article>
         `).join("")
       : empty("No commitments have been captured yet.");
+  }
+  if (state.activeView === "risks") {
+    const risks = await api(`/api/workspaces/${workspaceId}/risks`);
+    qs("#riskList").innerHTML = risks.length
+      ? risks.map((risk) => `
+          <article class="row-card">
+            <div>
+              <div class="source-meta">
+                <span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span>
+                <span class="stat-pill">${escapeHtml(risk.severity)}</span>
+              </div>
+              <h3>${escapeHtml(risk.title)}</h3>
+              <p>${escapeHtml(risk.description)}</p>
+              ${risk.mitigation ? `<p><strong>Mitigation:</strong> ${escapeHtml(risk.mitigation)}</p>` : ""}
+            </div>
+          </article>
+        `).join("")
+      : empty("No accepted risks have been captured yet.");
   }
   if (state.activeView === "meetings") {
     const meetings = await api(`/api/workspaces/${workspaceId}/meetings`);
@@ -305,7 +324,7 @@ function bindEvents() {
       body: data,
     });
     fileInput.value = "";
-    toast(source.status === "indexed" ? "Source indexed." : `Source ${source.status}.`);
+    toast(source.processing_status === "ready" ? "Source ready." : `Source ${source.processing_status}.`);
     await loadSources();
     await refreshWorkspace();
   });

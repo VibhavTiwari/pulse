@@ -54,7 +54,7 @@ def search_chunks(conn: Connection, workspace_id: str, question: str, limit: int
         SELECT c.id AS chunk_id, c.source_id, c.chunk_index, c.text, s.title AS source_title
         FROM source_chunks c
         JOIN sources s ON s.id = c.source_id
-        WHERE c.workspace_id = ? AND s.status = 'indexed'
+        WHERE c.workspace_id = ? AND s.processing_status = 'ready' AND s.status != 'deleted'
         """,
         (workspace_id,),
     ).fetchall()

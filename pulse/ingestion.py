@@ -74,16 +74,17 @@ async def ingest_upload(conn: Connection, workspace: dict, upload: UploadFile) -
         original_filename=filename,
         mime_type=upload.content_type,
         content_hash=digest,
-        status="uploaded",
+        status="pending",
+        origin="manual_upload",
+        metadata={"filename": filename},
     )
     try:
-        repository.update_source_status(conn, source["id"], "processing")
         text = extract_text(stored_path)
         chunks = chunk_text(text)
         if not chunks:
             raise ValueError("No readable text could be extracted from this file.")
         repository.replace_chunks(conn, source["id"], workspace["id"], chunks)
-        repository.update_source_status(conn, source["id"], "indexed")
+        repository.update_source_status(conn, source["id"], "ready")
     except Exception as exc:
         repository.update_source_status(conn, source["id"], "failed", str(exc))
     return repository.get_source(conn, source["id"], include_chunks=True) or source

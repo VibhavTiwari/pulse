@@ -59,9 +59,18 @@ def _clear_demo(conn) -> None:
     for table in [
         "citations",
         "ai_answers",
+        "brief_meetings",
+        "brief_risks",
+        "brief_commitments",
+        "brief_decisions",
+        "meeting_risks",
+        "meeting_commitments",
+        "meeting_decisions",
+        "evidence_references",
         "runs",
         "meetings",
         "briefs",
+        "risks",
         "commitments",
         "decisions",
         "source_chunks",
@@ -89,7 +98,11 @@ def _insert_demo_sources(conn, workspace: dict) -> list[dict]:
             original_filename=filename,
             mime_type="text/markdown" if filename.endswith(".md") else "text/plain",
             content_hash=digest,
-            status="indexed",
+            status="ready",
+            origin="manual_upload",
+            text_content=body,
+            metadata={"filename": filename},
+            processing_status="ready",
         )
         repository.replace_chunks(conn, source["id"], workspace["id"], chunk_text(body))
         conn.execute("UPDATE sources SET created_at = ?, updated_at = ? WHERE id = ?", (now, now, source["id"]))
@@ -98,55 +111,226 @@ def _insert_demo_sources(conn, workspace: dict) -> list[dict]:
 
 
 def _insert_seeded_views(conn, workspace_id: str, sources: list[dict]) -> None:
-    now = utc_now()
-    decisions = [
-        ("Private beta first", "Launch with a narrow private beta before a public announcement.", "accepted", "The launch notes favor learning from project leads before broad claims."),
-        ("Citations required", "AI answers must include source citations to be considered supported.", "accepted", "Trust is the central product promise for the evidence engine."),
-        ("Keyword retrieval for P0", "Start with deterministic keyword retrieval while keeping the schema vector-ready.", "accepted", "This keeps the demo local and avoids external credentials."),
-    ]
-    for title, summary, status, rationale in decisions:
-        conn.execute(
-            "INSERT INTO decisions(id, workspace_id, title, summary, status, rationale, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (make_id("dec"), workspace_id, title, summary, status, rationale, now, now),
-        )
-
-    source_id = sources[2]["id"]
-    commitments = [
-        ("Rina", "Prepare the first 20 beta customer contacts.", "2026-05-10", "open", source_id),
-        ("Dev", "Make failed ingestion errors readable in the Sources view.", "2026-05-08", "open", source_id),
-        ("Maya", "Draft the daily brief format with decisions and commitments.", "2026-05-12", "open", source_id),
-        ("Dev", "Persist workspace health counts in API responses.", "2026-05-06", "done", None),
-        ("Rina", "Review launch messaging for unsupported automation claims.", "2026-05-14", "open", None),
-    ]
-    for owner, description, due_date, status, commitment_source_id in commitments:
-        conn.execute(
-            "INSERT INTO commitments(id, workspace_id, owner, description, due_date, status, source_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (make_id("com"), workspace_id, owner, description, due_date, status, commitment_source_id, now, now),
-        )
-
-    conn.execute(
-        "INSERT INTO briefs(id, workspace_id, brief_date, title, summary, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            make_id("brief"),
-            workspace_id,
-            "2026-05-02",
-            "Daily Brief",
-            "Focus today on proving the local evidence loop: create the workspace, ingest sources, retrieve cited chunks, and show saved decisions and commitments.",
-            now,
-        ),
+    launch_source, evidence_source, followup_source, architecture_source = sources
+    private_beta = repository.create_entity(
+        conn,
+        "decision",
+        workspace_id,
+        {
+            "title": "Private beta first",
+            "context": "Launch with a narrow private beta before a public announcement.",
+            "decision_date": "2026-05-02",
+            "owner": "Rina",
+            "status": "active",
+            "record_state": "accepted",
+            "source_origin": "extracted",
+        },
+        manual=False,
     )
-    conn.execute(
-        "INSERT INTO meetings(id, workspace_id, title, meeting_date, attendees_json, agenda, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            make_id("mtg"),
+    citations_required = repository.create_entity(
+        conn,
+        "decision",
+        workspace_id,
+        {
+            "title": "Citations required",
+            "context": "AI answers must include source citations to be considered supported.",
+            "decision_date": "2026-05-02",
+            "owner": "Dev",
+            "status": "active",
+            "record_state": "accepted",
+            "source_origin": "extracted",
+        },
+        manual=False,
+    )
+    suggested_decision = repository.create_entity(
+        conn,
+        "decision",
+        workspace_id,
+        {
+            "title": "Keyword retrieval for P0",
+            "context": "Start with deterministic keyword retrieval while keeping the schema vector-ready.",
+            "decision_date": "2026-05-02",
+            "owner": "Dev",
+            "status": "active",
+            "record_state": "suggested",
+            "source_origin": "extracted",
+        },
+        manual=False,
+    )
+    for decision, source, text in [
+        (private_beta, launch_source, "The launch should prioritize a focused private beta before any public announcement."),
+        (citations_required, launch_source, "Every AI answer must include citations, and uncited answers should be treated as unsupported."),
+        (suggested_decision, evidence_source, "The retrieval layer can begin with keyword search as long as the chunk table is vector-ready."),
+    ]:
+        repository.create_evidence_reference(
+            conn,
+            workspace_id=workspace_id,
+            source_id=source["id"],
+            target_entity_type="decision",
+            target_entity_id=decision["id"],
+            evidence_text=text,
+            location_hint="seed excerpt",
+        )
+
+    commitments = []
+    for owner, title, due_date, status, source_origin in [
+        ("Rina", "Prepare first 20 beta customer contacts", "2026-05-10", "open", "extracted"),
+        ("Dev", "Make failed ingestion errors readable", "2026-05-08", "open", "extracted"),
+        ("Maya", "Draft daily brief format", "2026-05-12", "open", "extracted"),
+        ("Dev", "Persist workspace health counts", "2026-05-06", "done", "manual"),
+        ("Rina", "Review unsupported launch messaging claims", "2026-05-14", "open", "manual"),
+    ]:
+        commitment = repository.create_entity(
+            conn,
+            "commitment",
             workspace_id,
-            "Pulse P0 Planning Review",
-            "2026-05-03T10:00:00",
-            json.dumps(["Rina", "Dev", "Maya"]),
-            "Confirm private beta scope, review cited Ask AI behavior, and assign remaining source ingestion follow-ups.",
-            now,
-            now,
+            {
+                "title": title,
+                "description": title,
+                "owner": owner,
+                "due_date": due_date,
+                "due_date_known": True,
+                "status": status,
+                "record_state": "accepted",
+                "source_origin": source_origin,
+            },
+            manual=source_origin == "manual",
+        )
+        commitments.append(commitment)
+    for commitment in commitments[:3]:
+        repository.create_evidence_reference(
+            conn,
+            workspace_id=workspace_id,
+            source_id=followup_source["id"],
+            target_entity_type="commitment",
+            target_entity_id=commitment["id"],
+            evidence_text=commitment["description"],
+            location_hint="follow-up list",
+        )
+
+    risks = []
+    for title, description, severity, owner, status, mitigation, source in [
+        (
+            "Unsupported automation claims",
+            "Public messaging could overstate automation before the evidence engine is reliable.",
+            "high",
+            "Rina",
+            "open",
+            "Keep launch copy grounded in source-backed outputs.",
+            launch_source,
         ),
+        (
+            "External credential dependency",
+            "The demo must work without external model or integration credentials.",
+            "medium",
+            "Dev",
+            "mitigated",
+            "Use deterministic local retrieval for P0.",
+            evidence_source,
+        ),
+        (
+            "Workspace persistence gaps",
+            "Missing local folder or database health checks would make recovery unclear.",
+            "medium",
+            "Dev",
+            "resolved",
+            "Expose workspace health through API responses.",
+            architecture_source,
+        ),
+    ]:
+        risk = repository.create_entity(
+            conn,
+            "risk",
+            workspace_id,
+            {
+                "title": title,
+                "description": description,
+                "severity": severity,
+                "owner": owner,
+                "status": status,
+                "mitigation": mitigation,
+                "record_state": "accepted",
+                "source_origin": "extracted",
+            },
+            manual=False,
+        )
+        risks.append(risk)
+        repository.create_evidence_reference(
+            conn,
+            workspace_id=workspace_id,
+            source_id=source["id"],
+            target_entity_type="risk",
+            target_entity_id=risk["id"],
+            evidence_text=description,
+            location_hint="seed excerpt",
+        )
+
+    meeting = repository.create_entity(
+        conn,
+        "meeting",
+        workspace_id,
+        {
+            "title": "Pulse P0 Planning Review",
+            "meeting_date": "2026-05-03",
+            "description": "Confirm private beta scope, review cited Ask AI behavior, and assign remaining source ingestion follow-ups.",
+            "attendees": ["Rina", "Dev", "Maya"],
+        },
+    )
+    for target_type, target_id in [
+        ("decision", private_beta["id"]),
+        ("decision", citations_required["id"]),
+        ("commitment", commitments[0]["id"]),
+        ("commitment", commitments[1]["id"]),
+        ("risk", risks[0]["id"]),
+    ]:
+        repository.link_record(conn, "meeting", meeting["id"], target_type, target_id)
+    repository.create_evidence_reference(
+        conn,
+        workspace_id=workspace_id,
+        source_id=followup_source["id"],
+        target_entity_type="meeting",
+        target_entity_id=meeting["id"],
+        evidence_text="Rina, Dev, and Maya follow-ups from the planning review.",
+        location_hint="meeting notes",
+    )
+
+    brief = repository.create_entity(
+        conn,
+        "brief",
+        workspace_id,
+        {
+            "brief_date": "2026-05-02",
+            "brief_type": "daily",
+            "title": "Daily Brief",
+            "summary": "Focus today on proving the local evidence loop: sources, accepted project records, risks, and cited answers.",
+            "sections": {
+                "what_changed": [
+                    "Private beta and citations are accepted decisions.",
+                    "Three extracted commitments are ready for follow-up.",
+                ],
+                "needs_attention": [
+                    "Unsupported launch claims remain a high-severity open risk.",
+                    "Source ingestion error handling is still open.",
+                ],
+            },
+        },
+    )
+    for target_type, target_id in [
+        ("decision", private_beta["id"]),
+        ("decision", citations_required["id"]),
+        ("commitment", commitments[1]["id"]),
+        ("risk", risks[0]["id"]),
+        ("meeting", meeting["id"]),
+    ]:
+        repository.link_record(conn, "brief", brief["id"], target_type, target_id)
+    repository.create_evidence_reference(
+        conn,
+        workspace_id=workspace_id,
+        source_id=launch_source["id"],
+        target_entity_type="brief",
+        target_entity_id=brief["id"],
+        evidence_text="The launch plan should emphasize trust.",
+        location_hint="launch notes",
     )
 
 
