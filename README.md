@@ -1,51 +1,55 @@
-# Pulse Foundation
+# Pulse
 
-Local-first FastAPI foundation for Pulse: workspaces, SQLite persistence, source ingestion, chunk search, cited answers, seed data, and a static frontend.
+Pulse is now a Phoenix/Ecto/PostgreSQL application for the P0 executive/project intelligence data model.
 
-The current runnable implementation is Python/FastAPI + SQLite because this workspace does not include Elixir or PostgreSQL tooling. The P0 data model is implemented with the same product boundaries the Elixir/PostgreSQL backend should preserve later: sources, evidence references, decisions, commitments, risks, meetings, briefs, review states, and relationship tables.
+## Stack
 
-## Run
+- Elixir on the Erlang VM
+- Phoenix serving the frontend and JSON APIs
+- Ecto with PostgreSQL as the system of record
+- Static Pulse UI served by Phoenix from `priv/static`
+
+## Run Locally
+
+PowerShell in this environment needs Erlang, Elixir, and PostgreSQL added to the command PATH:
 
 ```powershell
-python -m pulse.seed
-uvicorn apps.api.app.main:app --reload
+$env:Path='C:\Program Files\Erlang OTP\bin;C:\Program Files\Elixir\bin;C:\Program Files\PostgreSQL\18\bin;' + $env:Path
+mix setup
+mix phx.server
 ```
 
 Open:
 
-- App: http://127.0.0.1:8000/
-- API docs: http://127.0.0.1:8000/docs
+- App: http://127.0.0.1:4000/
 
-## Useful Commands
+The default development database config is in `config/dev.exs` and uses:
 
-```powershell
-python -m pulse.seed          # reset and load demo data
-pytest                        # run smoke tests
+```text
+username: postgres
+password: postgres
+database: pulse_dev
 ```
 
 ## P0 Data Model
 
-Implemented records:
+Implemented:
 
-- Sources with `pending`, `ready`, and `failed` processing states
-- Evidence references from sources to decisions, commitments, risks, meetings, and briefs
-- Decisions with `suggested`, `accepted`, and `rejected` review states
-- Commitments with due-date consistency and `open`, `done`, `overdue`, `blocked` statuses
-- Risks with severity and status
+- Workspaces
+- Sources and source chunks
+- Evidence references
+- Decisions with `suggested`, `accepted`, `rejected`
+- Commitments with due-date consistency
+- Risks/blockers
 - Meetings linked to decisions, commitments, and risks
-- Briefs with structured sections and links to project records
+- Briefs with structured sections and linked records
 
-User-facing project truth endpoints default to `accepted` records.
+User-facing project truth endpoints default to accepted records.
 
-By default Pulse stores local data under:
+## Verification
 
-```text
-.pulse/
-  pulse.db
-  sources/
-  indexes/
-  exports/
-  runs/
+```powershell
+mix compile --warnings-as-errors
+mix test
+mix ecto.setup
 ```
-
-Set `PULSE_HOME` to use another local workspace root.

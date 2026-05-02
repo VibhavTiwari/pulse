@@ -1,0 +1,144 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">P</div>
+      <div>
+        <strong>Pulse</strong>
+        <span>Executive intelligence</span>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Pulse modules">
+      <button class="nav-item active" data-view="brief">Daily Brief</button>
+      <button class="nav-item" data-view="decisions">Decision Log</button>
+      <button class="nav-item" data-view="commitments">Commitment Ledger</button>
+      <button class="nav-item" data-view="risks">Risk Radar</button>
+      <button class="nav-item" data-view="meetings">Meeting Prep</button>
+      <button class="nav-item" data-view="ask">Ask AI</button>
+      <button class="nav-item" data-view="sources">Sources</button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="label">Current workspace</p>
+        <h1 id="workspaceName">Loading workspace</h1>
+      </div>
+      <div id="workspaceHealth" class="health-row"></div>
+    </header>
+
+    <section id="workspaceSetup" class="setup-panel hidden">
+      <div>
+        <h2>Create a project workspace</h2>
+        <p>
+          Pulse stores sources, evidence links, accepted records, meetings, and briefs in PostgreSQL.
+        </p>
+      </div>
+      <form id="workspaceForm" class="inline-form">
+        <input
+          id="workspaceInput"
+          name="name"
+          type="text"
+          value="Pulse Demo Workspace"
+          aria-label="Workspace name"
+        />
+        <button type="submit">Create</button>
+      </form>
+    </section>
+
+    <section id="briefView" class="view active-view">
+      <div class="section-header">
+        <div>
+          <p class="label">Today</p>
+          <h2>Daily Brief</h2>
+        </div>
+      </div>
+      <div id="briefList" class="content-grid"></div>
+    </section>
+
+    <section id="decisionsView" class="view">
+      <div class="section-header">
+        <div>
+          <p class="label">Project truth</p>
+          <h2>Decision Log</h2>
+        </div>
+      </div>
+      <div id="decisionList" class="table-list"></div>
+    </section>
+
+    <section id="commitmentsView" class="view">
+      <div class="section-header">
+        <div>
+          <p class="label">Accountability</p>
+          <h2>Commitment Ledger</h2>
+        </div>
+      </div>
+      <div id="commitmentList" class="table-list"></div>
+    </section>
+
+    <section id="risksView" class="view">
+      <div class="section-header">
+        <div>
+          <p class="label">Early warning</p>
+          <h2>Risk Radar</h2>
+        </div>
+      </div>
+      <div id="riskList" class="table-list"></div>
+    </section>
+
+    <section id="meetingsView" class="view">
+      <div class="section-header">
+        <div>
+          <p class="label">Operating rhythm</p>
+          <h2>Meeting Prep</h2>
+        </div>
+      </div>
+      <div id="meetingList" class="content-grid"></div>
+    </section>
+
+    <section id="askView" class="view">
+      <div class="ask-layout">
+        <div class="ask-panel">
+          <div class="section-header compact">
+            <div>
+              <p class="label">Evidence-backed</p>
+              <h2>Ask AI</h2>
+            </div>
+          </div>
+          <form id="askForm" class="ask-form">
+            <textarea
+              id="questionInput"
+              placeholder="What decisions have we made about the launch plan?"
+              required
+            ></textarea>
+            <button type="submit">Ask with citations</button>
+          </form>
+          <div id="answerPanel" class="answer-panel"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sourcesView" class="view">
+      <div class="sources-layout">
+        <div>
+          <div class="section-header compact">
+            <div>
+              <p class="label">Evidence</p>
+              <h2>Sources</h2>
+            </div>
+          </div>
+          <form id="uploadForm" class="upload-panel">
+            <input id="sourceFile" type="file" accept=".txt,.md" required />
+            <button type="submit">Upload source</button>
+          </form>
+          <div id="sourceList" class="source-list"></div>
+        </div>
+        <aside id="sourcePreview" class="source-preview">
+          <h3>Source preview</h3>
+          <p>Select a citation or source to inspect stored chunks.</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
