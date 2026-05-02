@@ -3,3 +3,7 @@ node_modules/
 .DS_Store
 dist/
 build/
+.pulse/
+__pycache__/
+*.py[cod]
+.pytest_cache/
