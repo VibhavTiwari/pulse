@@ -110,7 +110,22 @@ defmodule Pulse.P0DataModelTest do
         "brief_date" => "2026-05-02",
         "brief_type" => "daily",
         "summary" => "What changed and what needs attention.",
-        "sections" => %{"what_changed" => ["Decision accepted"], "needs_attention" => []}
+        "sections" => %{
+          "what_changed" => [
+            %{
+              "id" => "decision-accepted",
+              "section" => "what_changed",
+              "title" => "Decision accepted",
+              "body" => "Answers need citations.",
+              "item_type" => "decision",
+              "linked_entity_type" => "decision",
+              "linked_entity_id" => decision.id,
+              "evidence_state" => "none",
+              "evidence_refs" => []
+            }
+          ],
+          "needs_attention" => []
+        }
       })
 
     {:ok, linked_brief} = Records.link("brief", brief.id, "meeting", meeting.id)

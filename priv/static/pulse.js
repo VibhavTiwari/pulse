@@ -85,8 +85,7 @@ async function loadViewData() {
   const workspaceId = state.workspace.id;
 
   if (state.activeView === "brief") {
-    const briefs = await api(`/api/workspaces/${workspaceId}/briefs`);
-    qs("#briefList").innerHTML = briefs.length ? briefs.map((brief) => `<article class="card"><p class="label">${escapeHtml(formatDate(brief.brief_date))}</p><h3>${escapeHtml(brief.title)}</h3><p>${escapeHtml(brief.summary)}</p></article>`).join("") : empty("No briefs have been created yet.");
+    await loadBriefs();
   }
 
   if (state.activeView === "decisions") {
@@ -108,6 +107,56 @@ async function loadViewData() {
   }
 
   if (state.activeView === "sources") await loadSources();
+}
+
+async function loadBriefs(selectedBriefId = null) {
+  const workspaceId = state.workspace.id;
+  const briefs = await api(`/api/workspaces/${workspaceId}/briefs`);
+  const selectedBrief = selectedBriefId
+    ? await api(`/api/workspaces/${workspaceId}/briefs/${selectedBriefId}`)
+    : briefs[0];
+  qs("#briefPanel").innerHTML = selectedBrief ? renderBrief(selectedBrief) : empty("No daily brief has been generated yet.");
+  qs("#briefList").innerHTML = briefs.length ? briefs.map(renderBriefListItem).join("") : empty("No briefs have been created yet.");
+  bindBriefActions();
+}
+
+function renderBriefListItem(brief) {
+  return `<article class="row-card"><button type="button" data-brief-id="${escapeHtml(brief.id)}"><div class="source-meta"><span class="status ready">${escapeHtml(brief.brief_type)}</span><span class="stat-pill">${escapeHtml(formatDate(brief.brief_date))}</span><span class="stat-pill">${brief.what_changed_count ?? 0} changes</span><span class="stat-pill">${brief.needs_attention_count ?? 0} attention</span></div><h3>${escapeHtml(brief.title)}</h3><p>${escapeHtml(brief.summary)}</p></button></article>`;
+}
+
+function renderBrief(brief) {
+  const sections = brief.sections || {};
+  return `<article class="brief-card"><div class="source-meta"><span class="status ready">${escapeHtml(brief.brief_type)}</span><span class="stat-pill">${escapeHtml(formatDate(brief.brief_date))}</span></div><h3>${escapeHtml(brief.title)}</h3><p>${escapeHtml(brief.summary)}</p>${renderBriefSection("What changed?", sections.what_changed || [])}${renderBriefSection("Needs attention", sections.needs_attention || [])}</article>`;
+}
+
+function renderBriefSection(title, items) {
+  return `<section class="brief-section"><h4>${escapeHtml(title)}</h4><div class="brief-items">${items.map(renderBriefItem).join("")}</div></section>`;
+}
+
+function renderBriefItem(item) {
+  const evidence = item.evidence_refs || [];
+  const link = item.linked_entity_type && item.linked_entity_id && item.linked_entity_type !== "source"
+    ? `<button class="secondary-button" type="button" data-record-view="${escapeHtml(item.linked_entity_type)}">Open ${escapeHtml(item.linked_entity_type)}</button>`
+    : "";
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(item.evidence_state || "none")}">${escapeHtml(item.evidence_state || "none")} evidence</span><span class="stat-pill">${escapeHtml(labelize(item.item_type))}</span></div><h5>${escapeHtml(item.title)}</h5><p>${escapeHtml(item.body)}</p>${evidence.length ? `<div class="citation-list">${evidence.map(renderBriefEvidence).join("")}</div>` : `<p class="empty">No linked source evidence.</p>`}<div class="source-actions">${link}</div></article>`;
+}
+
+function renderBriefEvidence(reference) {
+  return `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} - ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`;
+}
+
+function bindBriefActions() {
+  document.querySelectorAll("[data-brief-id]").forEach((button) => button.addEventListener("click", () => {
+    loadBriefs(button.dataset.briefId).catch((error) => toast(error.message));
+  }));
+  document.querySelectorAll("#briefView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("[data-record-view]").forEach((button) => button.addEventListener("click", () => {
+    const view = `${button.dataset.recordView}s`;
+    if (views[view]) setView(view);
+  }));
 }
 
 async function loadDecisions() {
@@ -133,7 +182,7 @@ function renderDecisionSuggestion(decision) {
 function renderDecisionEvidence(decision) {
   const evidence = decision.evidence || [];
   if (!evidence.length) return `<p class="empty">Manual decision with no linked source evidence.</p>`;
-  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} · ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
+  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} - ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
 }
 
 function bindDecisionActions() {
@@ -191,7 +240,7 @@ function renderCommitmentSuggestion(commitment) {
 function renderRecordEvidence(record) {
   const evidence = record.evidence || [];
   if (!evidence.length) return `<p class="empty">Manual record with no linked source evidence.</p>`;
-  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} · ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
+  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} - ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
 }
 
 function bindCommitmentActions() {
@@ -237,7 +286,7 @@ function bindCommitmentActions() {
 function renderAnswer(answer) {
   state.askThreadId = answer.thread_id || state.askThreadId;
   const citations = answer.citations || [];
-  const turn = `<article class="ask-turn"><p class="label">Question</p><p>${escapeHtml(answer.question)}</p><div class="source-meta"><span class="status ${escapeHtml(answer.evidence_state || "none")}">${escapeHtml(answer.evidence_state || "none")} evidence</span></div><p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map((citation) => `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} · ${escapeHtml(citation.source_location || citation.location_hint || "source passage")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`).join("")}</div>` : `<p class="empty">No citations were found, so Pulse is not making a project-truth claim.</p>`}</article>`;
+  const turn = `<article class="ask-turn"><p class="label">Question</p><p>${escapeHtml(answer.question)}</p><div class="source-meta"><span class="status ${escapeHtml(answer.evidence_state || "none")}">${escapeHtml(answer.evidence_state || "none")} evidence</span></div><p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map((citation) => `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} - ${escapeHtml(citation.source_location || citation.location_hint || "source passage")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`).join("")}</div>` : `<p class="empty">No citations were found, so Pulse is not making a project-truth claim.</p>`}</article>`;
   const panel = qs("#answerPanel");
   if (panel.querySelector(".empty") && !panel.querySelector(".ask-turn")) panel.innerHTML = "";
   panel.insertAdjacentHTML("beforeend", turn);
@@ -253,7 +302,7 @@ async function loadSources() {
     source_type: qs("#sourceTypeFilter")?.value
   });
   const sources = await api(`/api/workspaces/${state.workspace.id}/sources${query}`);
-  qs("#sourceList").innerHTML = sources.length ? sources.map((source) => `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span><span class="stat-pill">${escapeHtml(labelize(source.origin))}</span>${source.source_date ? `<span class="stat-pill">${escapeHtml(formatDate(source.source_date))}</span>` : ""}</div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || "Manual source")} · Updated ${escapeHtml(formatDate(source.updated_at))}</p></button><button class="danger-button" type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`).join("") : empty("Source Library is where project evidence starts. Add pasted text or upload a readable .txt/.md file.");
+  qs("#sourceList").innerHTML = sources.length ? sources.map((source) => `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span><span class="stat-pill">${escapeHtml(labelize(source.origin))}</span>${source.source_date ? `<span class="stat-pill">${escapeHtml(formatDate(source.source_date))}</span>` : ""}</div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || "Manual source")} - Updated ${escapeHtml(formatDate(source.updated_at))}</p></button><button class="danger-button" type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`).join("") : empty("Source Library is where project evidence starts. Add pasted text or upload a readable .txt/.md file.");
   document.querySelectorAll("[data-source-id]").forEach((button) => button.addEventListener("click", () => loadSourcePreview(button.dataset.sourceId)));
   document.querySelectorAll("[data-delete-source]").forEach((button) => button.addEventListener("click", async () => {
     await api(`/api/workspaces/${state.workspace.id}/sources/${button.dataset.deleteSource}`, {method: "DELETE"});
@@ -314,8 +363,21 @@ function setSourceMode(mode) {
 }
 
 function bindEvents() {
+  qs("#briefDateInput").value = new Date().toISOString().slice(0, 10);
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelectorAll("[data-source-mode]").forEach((button) => button.addEventListener("click", () => setSourceMode(button.dataset.sourceMode)));
+  qs("#generateBriefButton").addEventListener("click", async () => {
+    const brief = await api(`/api/workspaces/${state.workspace.id}/briefs/daily`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        brief_date: qs("#briefDateInput").value,
+        window_days: qs("#briefWindowInput").value
+      })
+    });
+    toast(`Daily brief generated: ${brief.title}`);
+    await loadBriefs(brief.id);
+  });
   qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#commitmentStatusFilter").addEventListener("change", () => loadCommitments().catch((error) => toast(error.message)));

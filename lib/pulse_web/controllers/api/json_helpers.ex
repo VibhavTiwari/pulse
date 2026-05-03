@@ -169,6 +169,22 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def brief(brief) do
+    %{
+      id: brief.id,
+      workspace_id: brief.workspace_id,
+      title: brief.title,
+      brief_date: brief.brief_date,
+      brief_type: brief.brief_type,
+      summary: brief.summary,
+      sections: brief.sections || %{},
+      what_changed_count: brief_item_count(brief, "what_changed"),
+      needs_attention_count: brief_item_count(brief, "needs_attention"),
+      created_at: brief.inserted_at,
+      updated_at: brief.updated_at
+    }
+  end
+
   def evidence(reference) do
     %{
       id: reference.id,
@@ -193,6 +209,13 @@ defmodule PulseWeb.Api.JSONHelpers do
   end
 
   defp evidence_count(decision), do: length(decision_evidence(decision))
+
+  defp brief_item_count(brief, section) do
+    brief.sections
+    |> Kernel.||(%{})
+    |> Map.get(section, [])
+    |> Enum.count(&(&1["item_type"] != "other"))
+  end
 
   def errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->

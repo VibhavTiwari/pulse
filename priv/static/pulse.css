@@ -41,9 +41,16 @@ label span { display: block; color: var(--muted); font-size: 12px; line-height: 
 .section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .compact { margin-bottom: 14px; }
 .content-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 14px; }
-.card, .row-card, .answer-panel, .source-preview, .upload-panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.card, .row-card, .answer-panel, .source-preview, .upload-panel, .brief-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .card { padding: 18px; }
 .card p:last-child, .row-card p:last-child { margin-bottom: 0; }
+.brief-panel { margin: 14px 0 24px; }
+.brief-card { padding: 20px; }
+.brief-section { margin-top: 18px; }
+.brief-section h4 { margin-bottom: 10px; }
+.brief-items { display: grid; gap: 12px; }
+.brief-item { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fbfcfd; }
+.brief-item h5 { font-size: 1rem; margin: 8px 0 6px; }
 .table-list, .source-list { display: flex; flex-direction: column; gap: 10px; }
 .row-card { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 14px; }
 .row-card button { color: var(--accent); background: transparent; text-align: left; }

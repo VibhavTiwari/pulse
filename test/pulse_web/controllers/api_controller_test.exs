@@ -237,4 +237,85 @@ defmodule PulseWeb.ApiControllerTest do
     assert Enum.any?(accepted_commitments, &(&1["id"] == accepted["id"]))
     refute Enum.any?(accepted_commitments, &(&1["id"] == manual["id"]))
   end
+
+  test "daily brief APIs generate, save, retrieve, and expose item evidence", %{conn: conn} do
+    today = Date.utc_today()
+    conn = post(conn, ~p"/api/workspaces", %{name: "Brief API", root_path: "C:/tmp/db-api"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Brief Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        source_date: Date.to_iso8601(today),
+        text_content:
+          "The team decided to keep private beta scoped. Mira will finish launch checklist by tomorrow."
+      })
+
+    source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Keep beta scoped",
+        context: "Limit beta until launch readiness is clear.",
+        decision_date: Date.to_iso8601(today),
+        owner: "Mira",
+        status: "active",
+        evidence_source_id: source["id"],
+        evidence_text: "The team decided to keep private beta scoped."
+      })
+
+    decision = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments", %{
+        title: "Finish launch checklist",
+        owner: "Mira",
+        due_date: Date.to_iso8601(Date.add(today, -1)),
+        due_date_known: true,
+        status: "open",
+        evidence_source_id: source["id"],
+        evidence_text: "Mira will finish launch checklist by tomorrow."
+      })
+
+    commitment = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/briefs/daily", %{
+        brief_date: Date.to_iso8601(today),
+        window_days: 7
+      })
+
+    brief = json_response(conn, 200)
+    assert brief["brief_type"] == "daily"
+    assert brief["brief_date"] == Date.to_iso8601(today)
+    assert brief["summary"] =~ "Pulse found"
+    assert brief["what_changed_count"] >= 1
+    assert brief["needs_attention_count"] >= 1
+
+    what_changed = brief["sections"]["what_changed"]
+    needs_attention = brief["sections"]["needs_attention"]
+    assert Enum.any?(what_changed, &(&1["linked_entity_id"] == decision["id"]))
+    assert Enum.any?(needs_attention, &(&1["linked_entity_id"] == commitment["id"]))
+
+    item = Enum.find(what_changed, &(&1["linked_entity_id"] == decision["id"]))
+
+    conn =
+      get(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/briefs/#{brief["id"]}/items/#{item["id"]}/evidence"
+      )
+
+    assert [%{"source_id" => source_id}] = json_response(conn, 200)
+    assert source_id == source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/briefs/latest")
+    latest = json_response(conn, 200)
+    assert latest["id"] == brief["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/briefs")
+    assert [%{"id" => brief_id}] = json_response(conn, 200)
+    assert brief_id == brief["id"]
+  end
 end

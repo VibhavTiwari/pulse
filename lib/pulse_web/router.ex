@@ -67,6 +67,15 @@ defmodule PulseWeb.Router do
          CommitmentController,
          :attach_evidence
 
+    get "/workspaces/:workspace_id/briefs", BriefController, :index
+    get "/workspaces/:workspace_id/briefs/latest", BriefController, :latest
+    post "/workspaces/:workspace_id/briefs/daily", BriefController, :generate
+    get "/workspaces/:workspace_id/briefs/:id", BriefController, :show
+
+    get "/workspaces/:workspace_id/briefs/:id/items/:item_id/evidence",
+        BriefController,
+        :item_evidence
+
     post "/workspaces/:workspace_id/evidence", EvidenceController, :create
     get "/workspaces/:workspace_id/:collection", RecordController, :index
     post "/workspaces/:workspace_id/:collection", RecordController, :create
