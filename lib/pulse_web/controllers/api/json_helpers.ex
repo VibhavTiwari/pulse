@@ -150,6 +150,25 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def commitment(commitment) do
+    %{
+      id: commitment.id,
+      workspace_id: commitment.workspace_id,
+      title: commitment.title,
+      description: commitment.description,
+      owner: commitment.owner,
+      due_date: commitment.due_date,
+      due_date_known: commitment.due_date_known,
+      status: commitment.status,
+      record_state: commitment.record_state,
+      source_origin: commitment.source_origin,
+      evidence_count: evidence_count(commitment),
+      evidence: decision_evidence(commitment),
+      created_at: commitment.inserted_at,
+      updated_at: commitment.updated_at
+    }
+  end
+
   def evidence(reference) do
     %{
       id: reference.id,

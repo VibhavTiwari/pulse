@@ -94,8 +94,7 @@ async function loadViewData() {
   }
 
   if (state.activeView === "commitments") {
-    const commitments = await api(`/api/workspaces/${workspaceId}/commitments`);
-    qs("#commitmentList").innerHTML = commitments.length ? commitments.map((commitment) => `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date)) || "unknown"}</span></div><h3>${escapeHtml(commitment.title)}</h3><p>${escapeHtml(commitment.owner)}</p></div></article>`).join("") : empty("No accepted commitments have been captured yet.");
+    await loadCommitments();
   }
 
   if (state.activeView === "risks") {
@@ -165,6 +164,73 @@ function bindDecisionActions() {
     });
     toast("Decision suggestion updated.");
     await loadDecisions();
+  }));
+}
+
+async function loadCommitments() {
+  const workspaceId = state.workspace.id;
+  const query = queryString({status: qs("#commitmentStatusFilter")?.value});
+  const [commitments, suggestions] = await Promise.all([
+    api(`/api/workspaces/${workspaceId}/commitments${query}`),
+    api(`/api/workspaces/${workspaceId}/commitment_suggestions`)
+  ]);
+  qs("#commitmentList").innerHTML = commitments.length ? commitments.map(renderCommitmentCard).join("") : empty("No accepted commitments yet. Create one manually or accept a suggested commitment.");
+  qs("#commitmentInbox").innerHTML = suggestions.length ? suggestions.map(renderCommitmentSuggestion).join("") : empty("No suggested commitments are waiting for approval.");
+  bindCommitmentActions();
+}
+
+function renderCommitmentCard(commitment) {
+  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">${escapeHtml(labelize(commitment.source_origin || "manual"))}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(commitment.title)}</h3><p>${escapeHtml(commitment.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}</div><div class="source-actions"><select data-commitment-status="${escapeHtml(commitment.id)}" aria-label="Update commitment status"><option value="open" ${commitment.status === "open" ? "selected" : ""}>Open</option><option value="done" ${commitment.status === "done" ? "selected" : ""}>Done</option><option value="overdue" ${commitment.status === "overdue" ? "selected" : ""}>Overdue</option><option value="blocked" ${commitment.status === "blocked" ? "selected" : ""}>Blocked</option></select></div></article>`;
+}
+
+function renderCommitmentSuggestion(commitment) {
+  const incomplete = String(commitment.owner || "").toLowerCase() === "unknown";
+  return `<article class="row-card"><div><div class="source-meta"><span class="status suggested">suggested</span><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span>${incomplete ? `<span class="status failed">Needs owner</span>` : ""}</div><h3>${escapeHtml(commitment.title)}</h3><p>${escapeHtml(commitment.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}</div><div class="source-actions"><button class="secondary-button" type="button" data-edit-commitment="${escapeHtml(commitment.id)}">Edit</button><button class="secondary-button" type="button" data-accept-commitment="${escapeHtml(commitment.id)}">Accept</button><button class="danger-button" type="button" data-reject-commitment="${escapeHtml(commitment.id)}">Reject</button></div></article>`;
+}
+
+function renderRecordEvidence(record) {
+  const evidence = record.evidence || [];
+  if (!evidence.length) return `<p class="empty">Manual record with no linked source evidence.</p>`;
+  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} · ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
+}
+
+function bindCommitmentActions() {
+  document.querySelectorAll("#commitmentsView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("[data-accept-commitment]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/commitments/${button.dataset.acceptCommitment}/accept`, {method: "POST"});
+    toast("Commitment accepted.");
+    await loadCommitments();
+    await refreshWorkspace();
+  }));
+  document.querySelectorAll("[data-reject-commitment]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/commitments/${button.dataset.rejectCommitment}/reject`, {method: "POST"});
+    toast("Commitment suggestion rejected.");
+    await loadCommitments();
+  }));
+  document.querySelectorAll("[data-edit-commitment]").forEach((button) => button.addEventListener("click", async () => {
+    const title = window.prompt("Commitment title");
+    if (title === null) return;
+    const owner = window.prompt("Owner");
+    if (owner === null) return;
+    await api(`/api/workspaces/${state.workspace.id}/commitments/${button.dataset.editCommitment}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({title: title.trim(), owner: owner.trim()})
+    });
+    toast("Commitment suggestion updated.");
+    await loadCommitments();
+  }));
+  document.querySelectorAll("[data-commitment-status]").forEach((select) => select.addEventListener("change", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/commitments/${select.dataset.commitmentStatus}/status`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({status: select.value})
+    });
+    toast("Commitment status updated.");
+    await loadCommitments();
   }));
 }
 
@@ -252,6 +318,7 @@ function bindEvents() {
   document.querySelectorAll("[data-source-mode]").forEach((button) => button.addEventListener("click", () => setSourceMode(button.dataset.sourceMode)));
   qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
+  qs("#commitmentStatusFilter").addEventListener("change", () => loadCommitments().catch((error) => toast(error.message)));
   qs("#workspaceForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const workspace = await api("/api/workspaces", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: qs("#workspaceInput").value.trim()})});
@@ -278,6 +345,36 @@ function bindEvents() {
     toast(`Decision created: ${decision.title}`);
     await loadDecisions();
     await refreshWorkspace();
+  });
+  qs("#commitmentForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dueUnknown = qs("#commitmentDueUnknown").checked;
+    const dueDate = qs("#commitmentDueDate").value;
+    const commitment = await api(`/api/workspaces/${state.workspace.id}/commitments`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: qs("#commitmentTitle").value.trim(),
+        description: qs("#commitmentDescription").value.trim(),
+        owner: qs("#commitmentOwner").value.trim(),
+        due_date: dueUnknown ? null : dueDate,
+        due_date_known: !dueUnknown,
+        status: qs("#commitmentStatus").value
+      })
+    });
+    qs("#commitmentTitle").value = "";
+    qs("#commitmentDescription").value = "";
+    qs("#commitmentOwner").value = "";
+    qs("#commitmentDueDate").value = "";
+    qs("#commitmentDueUnknown").checked = false;
+    toast(`Commitment created: ${commitment.title}`);
+    await loadCommitments();
+    await refreshWorkspace();
+  });
+  qs("#extractCommitmentsButton").addEventListener("click", async () => {
+    const suggestions = await api(`/api/workspaces/${state.workspace.id}/commitments/extract`, {method: "POST"});
+    toast(suggestions.length ? `${suggestions.length} commitment suggestion${suggestions.length === 1 ? "" : "s"} found.` : "No clear commitments found in ready sources.");
+    await loadCommitments();
   });
   qs("#extractDecisionsButton").addEventListener("click", async () => {
     const suggestions = await api(`/api/workspaces/${state.workspace.id}/decisions/extract`, {method: "POST"});

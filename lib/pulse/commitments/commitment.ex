@@ -4,6 +4,7 @@ defmodule Pulse.Commitments.Commitment do
   import Pulse.ChangesetHelpers
 
   @statuses ~w(open done overdue blocked)
+  @source_origins ~w(manual extracted)
 
   schema "commitments" do
     belongs_to :workspace, Pulse.Workspaces.Workspace
@@ -32,9 +33,17 @@ defmodule Pulse.Commitments.Commitment do
       :record_state,
       :source_origin
     ])
-    |> validate_trimmed_required([:workspace_id, :title, :owner, :status, :record_state])
+    |> validate_trimmed_required([
+      :workspace_id,
+      :title,
+      :owner,
+      :due_date_known,
+      :status,
+      :record_state
+    ])
     |> validate_inclusion(:status, @statuses)
     |> validate_record_state()
+    |> validate_inclusion(:source_origin, @source_origins)
     |> validate_due_date_consistency()
   end
 

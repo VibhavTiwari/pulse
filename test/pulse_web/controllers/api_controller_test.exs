@@ -166,4 +166,75 @@ defmodule PulseWeb.ApiControllerTest do
     accepted_decisions = json_response(conn, 200)
     assert Enum.any?(accepted_decisions, &(&1["id"] == accepted["id"]))
   end
+
+  test "commitment ledger APIs support manual creation, extraction, status, and approval", %{
+    conn: conn
+  } do
+    conn =
+      post(conn, ~p"/api/workspaces", %{name: "Commitment API", root_path: "C:/tmp/cl-api"})
+
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments", %{
+        title: "Manual commitment",
+        description: "User recorded this directly.",
+        owner: "Mira",
+        due_date: "2026-05-10",
+        due_date_known: true,
+        status: "open"
+      })
+
+    manual = json_response(conn, 200)
+    assert manual["record_state"] == "accepted"
+    assert manual["source_origin"] == "manual"
+    assert manual["status"] == "open"
+
+    conn =
+      patch(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments/#{manual["id"]}/status", %{
+        status: "blocked"
+      })
+
+    blocked = json_response(conn, 200)
+    assert blocked["status"] == "blocked"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Commitment Transcript",
+        source_type: "transcript",
+        origin: "manual_entry",
+        text_content: "Action item: Mira will finalize the launch FAQ by 2026-05-10."
+      })
+
+    source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments/extract", %{
+        source_id: source["id"]
+      })
+
+    [suggestion] = json_response(conn, 200)
+    assert suggestion["record_state"] == "suggested"
+    assert suggestion["source_origin"] == "extracted"
+    assert suggestion["due_date_known"] == true
+    assert [%{"source_id" => source_id}] = suggestion["evidence"]
+    assert source_id == source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/commitment_suggestions")
+    assert [%{"id" => suggestion_id}] = json_response(conn, 200)
+    assert suggestion_id == suggestion["id"]
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments/#{suggestion["id"]}/accept")
+
+    accepted = json_response(conn, 200)
+    assert accepted["record_state"] == "accepted"
+    assert [%{"source_id" => source_id}] = accepted["evidence"]
+    assert source_id == source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments?status=open")
+    accepted_commitments = json_response(conn, 200)
+    assert Enum.any?(accepted_commitments, &(&1["id"] == accepted["id"]))
+    refute Enum.any?(accepted_commitments, &(&1["id"] == manual["id"]))
+  end
 end

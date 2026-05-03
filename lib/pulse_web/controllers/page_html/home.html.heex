@@ -79,43 +79,49 @@
             <span>Title</span>
             <input id="decisionTitle" type="text" placeholder="Private beta launch" required />
           </label>
-          <label>
-            <span>Date</span>
-            <input id="decisionDate" type="date" required />
-          </label>
+          <label><span>Date</span> <input id="decisionDate" type="date" required /></label>
           <label>
             <span>Owner</span>
             <input id="decisionOwner" type="text" placeholder="Mira" required />
           </label>
         </div>
+
         <label>
-          <span>Context</span>
-          <textarea id="decisionContext" placeholder="What was decided and why?" required></textarea>
+          <span>Context</span> <textarea
+            id="decisionContext"
+            placeholder="What was decided and why?"
+            required
+          ></textarea>
         </label>
         <label>
           <span>Status</span>
           <select id="decisionStatus">
             <option value="active">Active</option>
+
             <option value="inactive">Inactive</option>
           </select>
         </label>
-        <button type="submit">Create decision</button>
+         <button type="submit">Create decision</button>
       </form>
 
       <div class="section-header compact">
         <div>
           <p class="label">Approval inbox</p>
+
           <h3>Suggested decisions</h3>
         </div>
       </div>
+
       <div id="decisionInbox" class="table-list"></div>
 
       <div class="section-header compact">
         <div>
           <p class="label">Accepted project truth</p>
+
           <h3>Accepted decisions</h3>
         </div>
       </div>
+
       <div id="decisionList" class="table-list"></div>
     </section>
 
@@ -126,8 +132,78 @@
 
           <h2>Commitment Ledger</h2>
         </div>
+
+        <button id="extractCommitmentsButton" class="secondary-button" type="button">
+          Extract from sources
+        </button>
       </div>
 
+      <form id="commitmentForm" class="source-form">
+        <div class="form-grid">
+          <label>
+            <span>Title</span>
+            <input
+              id="commitmentTitle"
+              type="text"
+              placeholder="Prepare launch checklist"
+              required
+            />
+          </label>
+          <label>
+            <span>Owner</span>
+            <input id="commitmentOwner" type="text" placeholder="Mira" required />
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="commitmentStatus">
+              <option value="open">Open</option>
+              <option value="done">Done</option>
+              <option value="overdue">Overdue</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            <span>Due date</span>
+            <input id="commitmentDueDate" type="date" />
+          </label>
+          <label class="checkbox-label">
+            <input id="commitmentDueUnknown" type="checkbox" />
+            <span>Due date unknown</span>
+          </label>
+        </div>
+        <label>
+          <span>Description</span>
+          <textarea id="commitmentDescription" placeholder="Additional detail or context"></textarea>
+        </label>
+        <button type="submit">Create commitment</button>
+      </form>
+
+      <div class="source-toolbar">
+        <select id="commitmentStatusFilter" aria-label="Filter commitments by status">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="done">Done</option>
+          <option value="overdue">Overdue</option>
+          <option value="blocked">Blocked</option>
+        </select>
+      </div>
+
+      <div class="section-header compact">
+        <div>
+          <p class="label">Approval inbox</p>
+          <h3>Suggested commitments</h3>
+        </div>
+      </div>
+      <div id="commitmentInbox" class="table-list"></div>
+
+      <div class="section-header compact">
+        <div>
+          <p class="label">Accepted accountability</p>
+          <h3>Accepted commitments</h3>
+        </div>
+      </div>
       <div id="commitmentList" class="table-list"></div>
     </section>
 

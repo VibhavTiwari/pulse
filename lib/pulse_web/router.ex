@@ -53,6 +53,20 @@ defmodule PulseWeb.Router do
     post "/workspaces/:workspace_id/decisions/:id/accept", DecisionController, :accept
     post "/workspaces/:workspace_id/decisions/:id/reject", DecisionController, :reject
     post "/workspaces/:workspace_id/decisions/:id/evidence", DecisionController, :attach_evidence
+    get "/workspaces/:workspace_id/commitments", CommitmentController, :index
+    post "/workspaces/:workspace_id/commitments", CommitmentController, :create
+    post "/workspaces/:workspace_id/commitments/extract", CommitmentController, :extract
+    get "/workspaces/:workspace_id/commitment_suggestions", CommitmentController, :suggestions
+    get "/workspaces/:workspace_id/commitments/:id", CommitmentController, :show
+    patch "/workspaces/:workspace_id/commitments/:id", CommitmentController, :update
+    patch "/workspaces/:workspace_id/commitments/:id/status", CommitmentController, :update_status
+    post "/workspaces/:workspace_id/commitments/:id/accept", CommitmentController, :accept
+    post "/workspaces/:workspace_id/commitments/:id/reject", CommitmentController, :reject
+
+    post "/workspaces/:workspace_id/commitments/:id/evidence",
+         CommitmentController,
+         :attach_evidence
+
     post "/workspaces/:workspace_id/evidence", EvidenceController, :create
     get "/workspaces/:workspace_id/:collection", RecordController, :index
     post "/workspaces/:workspace_id/:collection", RecordController, :create
