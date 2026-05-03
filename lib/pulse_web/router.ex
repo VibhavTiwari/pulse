@@ -38,6 +38,8 @@ defmodule PulseWeb.Router do
     delete "/workspaces/:workspace_id/sources/:id", SourceController, :delete
     get "/sources/:source_id/records", EvidenceController, :for_source
 
+    get "/workspaces/:workspace_id/dashboard", DashboardController, :show
+
     get "/workspaces/:workspace_id/search", AskController, :search
     get "/workspaces/:workspace_id/ask_threads", AskController, :index
     post "/workspaces/:workspace_id/ask_threads", AskController, :start_thread

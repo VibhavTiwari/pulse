@@ -7,7 +7,8 @@
     </div>
 
     <nav class="nav" aria-label="Pulse modules">
-      <button class="nav-item active" data-view="brief">Daily Brief</button>
+      <button class="nav-item active" data-view="dashboard">Project Dashboard</button>
+      <button class="nav-item" data-view="brief">Daily Brief</button>
       <button class="nav-item" data-view="decisions">Decision Log</button>
       <button class="nav-item" data-view="commitments">Commitment Ledger</button>
       <button class="nav-item" data-view="risks">Risk Radar</button>
@@ -49,7 +50,75 @@
       </form>
     </section>
 
-    <section id="briefView" class="view active-view">
+    <section id="dashboardView" class="view active-view">
+      <div class="section-header">
+        <div>
+          <p class="label">Executive home</p>
+
+          <h2>Project Dashboard</h2>
+        </div>
+
+        <button id="runDemoFlowButton" class="secondary-button" type="button">
+          Run end-to-end demo
+        </button>
+      </div>
+
+      <div id="dashboardSummary" class="brief-panel"></div>
+
+      <div id="demoFlowPanel" class="answer-panel hidden"></div>
+
+      <div class="dashboard-grid">
+        <section class="source-preview">
+          <div class="section-header compact">
+            <div>
+              <p class="label">Current status</p>
+
+              <h3>Latest Daily Brief</h3>
+            </div>
+          </div>
+
+          <div id="dashboardBrief"></div>
+        </section>
+
+        <section class="source-preview">
+          <div class="section-header compact">
+            <div>
+              <p class="label">Accountability</p>
+
+              <h3>Overdue commitments</h3>
+            </div>
+          </div>
+
+          <div id="dashboardOverdue" class="table-list"></div>
+        </section>
+
+        <section class="source-preview">
+          <div class="section-header compact">
+            <div>
+              <p class="label">Attention</p>
+
+              <h3>Open risks</h3>
+            </div>
+          </div>
+
+          <div id="dashboardRisks" class="table-list"></div>
+        </section>
+
+        <section class="source-preview">
+          <div class="section-header compact">
+            <div>
+              <p class="label">Direction</p>
+
+              <h3>Recent decisions</h3>
+            </div>
+          </div>
+
+          <div id="dashboardDecisions" class="table-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="briefView" class="view">
       <div class="section-header">
         <div>
           <p class="label">Today</p>
@@ -132,7 +201,7 @@
             <option value="inactive">Inactive</option>
           </select>
         </label>
-         <button type="submit">Create decision</button>
+        <button type="submit">Create decision</button>
       </form>
 
       <div class="section-header compact">
@@ -211,7 +280,7 @@
             placeholder="Additional detail or context"
           ></textarea>
         </label>
-         <button type="submit">Create commitment</button>
+        <button type="submit">Create commitment</button>
       </form>
 
       <div class="source-toolbar">
@@ -269,25 +338,30 @@
             <input id="riskTitle" type="text" placeholder="Launch readiness blocker" required />
           </label>
           <label>
-            <span>Owner</span>
-            <input id="riskOwner" type="text" placeholder="Mira" required />
+            <span>Owner</span> <input id="riskOwner" type="text" placeholder="Mira" required />
           </label>
           <label>
             <span>Severity</span>
             <select id="riskSeverity">
               <option value="low">Low</option>
+
               <option value="medium">Medium</option>
+
               <option value="high" selected>High</option>
+
               <option value="critical">Critical</option>
             </select>
           </label>
         </div>
+
         <div class="form-grid">
           <label>
             <span>Status</span>
             <select id="riskStatus">
               <option value="open">Open</option>
+
               <option value="mitigated">Mitigated</option>
+
               <option value="resolved">Resolved</option>
             </select>
           </label>
@@ -296,9 +370,13 @@
             <input id="riskMitigation" type="text" placeholder="Current response plan" />
           </label>
         </div>
+
         <label>
-          <span>Description</span>
-          <textarea id="riskDescription" placeholder="What is the risk or blocker?" required></textarea>
+          <span>Description</span> <textarea
+            id="riskDescription"
+            placeholder="What is the risk or blocker?"
+            required
+          ></textarea>
         </label>
         <button type="submit">Create risk</button>
       </form>
@@ -306,15 +384,22 @@
       <div class="source-toolbar">
         <select id="riskSeverityFilter" aria-label="Filter risks by severity">
           <option value="">All severities</option>
+
           <option value="low">Low</option>
+
           <option value="medium">Medium</option>
+
           <option value="high">High</option>
+
           <option value="critical">Critical</option>
         </select>
         <select id="riskStatusFilter" aria-label="Filter risks by status">
           <option value="">All statuses</option>
+
           <option value="open">Open</option>
+
           <option value="mitigated">Mitigated</option>
+
           <option value="resolved">Resolved</option>
         </select>
       </div>
@@ -326,6 +411,7 @@
       <div class="section-header">
         <div>
           <p class="label">Human approval</p>
+
           <h2>Review Inbox</h2>
         </div>
       </div>
@@ -333,8 +419,11 @@
       <div class="source-toolbar">
         <select id="reviewTypeFilter" aria-label="Filter suggestions by type">
           <option value="">All suggestions</option>
+
           <option value="decision">Decisions</option>
+
           <option value="commitment">Commitments</option>
+
           <option value="risk">Risks</option>
         </select>
       </div>
@@ -370,7 +459,7 @@
             placeholder="What should Pulse use to find relevant decisions and open commitments?"
           ></textarea>
         </label>
-         <button type="submit">Create meeting</button>
+        <button type="submit">Create meeting</button>
       </form>
 
       <div class="meeting-layout">
@@ -492,7 +581,7 @@
             <label id="manualUploadPanel" class="hidden">
               <span>File</span> <input id="sourceFile" type="file" accept=".txt,.md" />
             </label>
-             <button id="sourceSubmit" type="submit">Add source</button>
+            <button id="sourceSubmit" type="submit">Add source</button>
           </form>
 
           <div class="source-toolbar">

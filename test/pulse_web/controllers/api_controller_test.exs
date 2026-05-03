@@ -530,4 +530,79 @@ defmodule PulseWeb.ApiControllerTest do
     conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/review_inbox")
     assert json_response(conn, 200) == []
   end
+
+  test "project dashboard reflects real source ask decision commitment brief flow", %{conn: conn} do
+    today = Date.utc_today()
+    yesterday = Date.add(today, -1)
+    conn = post(conn, ~p"/api/workspaces", %{name: "Dashboard API", root_path: "C:/tmp/pd-api"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Dashboard Demo Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        source_date: Date.to_iso8601(today),
+        text_content:
+          "Launch update: the team decided to keep private beta scoped until support readiness is clear. Mira will finish the launch checklist before beta expansion."
+      })
+
+    source = json_response(conn, 200)
+    assert source["processing_status"] == "ready"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/ask", %{
+        question: "What is the launch plan?"
+      })
+
+    answer = json_response(conn, 200)
+    assert [_citation | _] = answer["citations"]
+    citation = List.first(answer["citations"])
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Keep private beta scoped",
+        context: "Private beta remains scoped until support readiness is clear.",
+        decision_date: Date.to_iso8601(today),
+        owner: "Mira",
+        status: "active",
+        evidence_source_id: citation["source_id"],
+        evidence_text: citation["quote"]
+      })
+
+    decision = json_response(conn, 200)
+    assert decision["record_state"] == "accepted"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments", %{
+        title: "Finish launch checklist",
+        description: "Complete the launch checklist before beta expansion.",
+        owner: "Mira",
+        due_date: Date.to_iso8601(yesterday),
+        due_date_known: true,
+        status: "open",
+        evidence_source_id: citation["source_id"],
+        evidence_text: citation["quote"]
+      })
+
+    commitment = json_response(conn, 200)
+    assert commitment["record_state"] == "accepted"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/briefs/daily", %{
+        brief_date: Date.to_iso8601(today),
+        window_days: 7
+      })
+
+    brief = json_response(conn, 200)
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/dashboard")
+    dashboard = json_response(conn, 200)
+
+    assert dashboard["latest_brief"]["id"] == brief["id"]
+    assert Enum.any?(dashboard["recent_decisions"], &(&1["id"] == decision["id"]))
+    assert Enum.any?(dashboard["overdue_commitments"], &(&1["id"] == commitment["id"]))
+    assert dashboard["open_risks"] == []
+    assert dashboard["summary"] =~ "Dashboard status"
+  end
 end

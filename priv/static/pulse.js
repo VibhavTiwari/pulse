@@ -1,5 +1,5 @@
-const state = {workspace: null, activeView: "brief", sourceMode: "manual_entry", selectedSourceId: null, askThreadId: null};
-const views = {brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", review: "reviewView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
+const state = {workspace: null, activeView: "dashboard", sourceMode: "manual_entry", selectedSourceId: null, askThreadId: null, focus: null};
+const views = {dashboard: "dashboardView", brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", review: "reviewView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
 
 const qs = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -58,11 +58,26 @@ function setWorkspace(workspace) {
     <span class="stat-pill">${health.risk_count ?? 0} risks</span>` : "";
 }
 
-function setView(view) {
+function setView(view, focus = null) {
   state.activeView = view;
+  state.focus = focus;
   Object.entries(views).forEach(([key, id]) => qs(`#${id}`).classList.toggle("active-view", key === view));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   loadViewData().catch((error) => toast(error.message));
+}
+
+function consumeFocus(view) {
+  if (state.focus?.view !== view) return null;
+  const focus = state.focus;
+  state.focus = null;
+  return focus;
+}
+
+function focusRecordElement(element) {
+  if (!element) return;
+  element.classList.add("record-focus");
+  element.scrollIntoView({block: "center", behavior: "smooth"});
+  window.setTimeout(() => element.classList.remove("record-focus"), 2600);
 }
 
 function empty(label) {
@@ -83,6 +98,10 @@ async function refreshWorkspace() {
 async function loadViewData() {
   if (!state.workspace) return;
   const workspaceId = state.workspace.id;
+
+  if (state.activeView === "dashboard") {
+    await loadDashboard();
+  }
 
   if (state.activeView === "brief") {
     await loadBriefs();
@@ -111,8 +130,199 @@ async function loadViewData() {
   if (state.activeView === "sources") await loadSources();
 }
 
+async function loadDashboard() {
+  const dashboard = await api(`/api/workspaces/${state.workspace.id}/dashboard`);
+  qs("#dashboardSummary").innerHTML = renderDashboardSummary(dashboard);
+  qs("#dashboardBrief").innerHTML = dashboard.latest_brief ? renderDashboardBrief(dashboard.latest_brief) : empty("No Daily Brief yet. Generate one after accepting project records.");
+  qs("#dashboardOverdue").innerHTML = dashboard.overdue_commitments.length ? dashboard.overdue_commitments.map(renderDashboardCommitment).join("") : empty("No overdue accepted commitments.");
+  qs("#dashboardRisks").innerHTML = dashboard.open_risks.length ? dashboard.open_risks.map(renderDashboardRisk).join("") : empty("No accepted open risks.");
+  qs("#dashboardDecisions").innerHTML = dashboard.recent_decisions.length ? dashboard.recent_decisions.map(renderDashboardDecision).join("") : empty("No accepted decisions yet.");
+  bindDashboardActions();
+}
+
+function renderDashboardSummary(dashboard) {
+  return `<article class="brief-card"><p class="label">Current status summary</p><h3>${escapeHtml(state.workspace.name)}</h3><p>${escapeHtml(dashboard.summary)}</p><div class="source-meta"><button class="secondary-button" type="button" data-dashboard-view="brief">Daily Brief</button><button class="secondary-button" type="button" data-dashboard-view="decisions">${dashboard.counts.recent_decisions} recent decisions</button><button class="secondary-button" type="button" data-dashboard-view="commitments">${dashboard.counts.overdue_commitments} overdue</button><button class="secondary-button" type="button" data-dashboard-view="risks">${dashboard.counts.open_risks} open risks</button></div></article>`;
+}
+
+function renderDashboardBrief(brief) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ready">daily</span><span class="stat-pill">${escapeHtml(formatDate(brief.brief_date))}</span></div><h5>${escapeHtml(brief.title)}</h5><p>${escapeHtml(brief.summary)}</p><button class="secondary-button" type="button" data-dashboard-brief-id="${escapeHtml(brief.id)}">Open brief</button></article>`;
+}
+
+function renderDashboardCommitment(commitment) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span></div><h5>${escapeHtml(commitment.title)}</h5><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}<button class="secondary-button" type="button" data-dashboard-record-view="commitments" data-dashboard-record-id="${escapeHtml(commitment.id)}">Open commitment</button></article>`;
+}
+
+function renderDashboardRisk(risk) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span><span class="stat-pill">${escapeHtml(risk.severity)}</span><span class="stat-pill">${escapeHtml(risk.evidence_count ? `${risk.evidence_count} evidence` : "No evidence")}</span></div><h5>${escapeHtml(risk.title)}</h5><p>${escapeHtml(risk.description)}</p><p><strong>Owner:</strong> ${escapeHtml(risk.owner)}</p>${renderRecordEvidence(risk)}<button class="secondary-button" type="button" data-dashboard-record-view="risks" data-dashboard-record-id="${escapeHtml(risk.id)}">Open risk</button></article>`;
+}
+
+function renderDashboardDecision(decision) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h5>${escapeHtml(decision.title)}</h5><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderRecordEvidence(decision)}<button class="secondary-button" type="button" data-dashboard-record-view="decisions" data-dashboard-record-id="${escapeHtml(decision.id)}">Open decision</button></article>`;
+}
+
+function bindDashboardActions() {
+  document.querySelectorAll("[data-dashboard-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.dashboardView)));
+  document.querySelectorAll("[data-dashboard-brief-id]").forEach((button) => button.addEventListener("click", () => setView("brief", {view: "brief", id: button.dataset.dashboardBriefId})));
+  document.querySelectorAll("[data-dashboard-record-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.dashboardRecordView, {view: button.dataset.dashboardRecordView, id: button.dataset.dashboardRecordId})));
+  document.querySelectorAll("#dashboardView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+}
+
+function demoSteps() {
+  return [
+    {key: "source", label: "Ready source", state: "pending"},
+    {key: "answer", label: "Cited Ask answer", state: "pending"},
+    {key: "decision", label: "Accepted decision", state: "pending"},
+    {key: "commitment", label: "Accepted commitment", state: "pending"},
+    {key: "brief", label: "Saved Daily Brief", state: "pending"},
+    {key: "dashboard", label: "Dashboard refreshed", state: "pending"}
+  ];
+}
+
+function updateDemoFlowPanel(steps, message, artifacts = {}) {
+  const actions = [
+    artifacts.source && `<button class="secondary-button" type="button" data-demo-source-id="${escapeHtml(artifacts.source.id)}">Open source</button>`,
+    artifacts.answer && `<button class="secondary-button" type="button" data-demo-view="ask">Open Ask answer</button>`,
+    artifacts.decision && `<button class="secondary-button" type="button" data-demo-record-view="decisions" data-demo-record-id="${escapeHtml(artifacts.decision.id)}">Open decision</button>`,
+    artifacts.commitment && `<button class="secondary-button" type="button" data-demo-record-view="commitments" data-demo-record-id="${escapeHtml(artifacts.commitment.id)}">Open commitment</button>`,
+    artifacts.brief && `<button class="secondary-button" type="button" data-demo-brief-id="${escapeHtml(artifacts.brief.id)}">Open brief</button>`,
+    artifacts.dashboard && `<button class="secondary-button" type="button" data-demo-view="dashboard">Open dashboard</button>`
+  ].filter(Boolean).join("");
+
+  qs("#demoFlowPanel").innerHTML = `<p class="label">End-to-end demo</p><p>${escapeHtml(message)}</p><div class="demo-steps">${steps.map((step) => `<div class="demo-step"><span class="status ${escapeHtml(step.state)}">${escapeHtml(step.state)}</span><span>${escapeHtml(step.label)}</span>${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ""}</div>`).join("")}</div>${actions ? `<div class="source-actions">${actions}</div>` : ""}`;
+  bindDemoActions();
+}
+
+function bindDemoActions() {
+  document.querySelectorAll("[data-demo-source-id]").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.demoSourceId);
+  }));
+  document.querySelectorAll("[data-demo-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.demoView)));
+  document.querySelectorAll("[data-demo-brief-id]").forEach((button) => button.addEventListener("click", () => setView("brief", {view: "brief", id: button.dataset.demoBriefId})));
+  document.querySelectorAll("[data-demo-record-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.demoRecordView, {view: button.dataset.demoRecordView, id: button.dataset.demoRecordId})));
+}
+
+async function runDemoFlow() {
+  const panel = qs("#demoFlowPanel");
+  const steps = demoSteps();
+  const artifacts = {};
+  let currentStep = steps[0];
+
+  const mark = (key, state, detail = "") => {
+    const step = steps.find((candidate) => candidate.key === key);
+    if (!step) return;
+    step.state = state;
+    step.detail = detail;
+    currentStep = step;
+    updateDemoFlowPanel(steps, state === "failed" ? `Demo stopped at ${step.label}.` : "Running Source -> answer -> decision -> commitment -> brief.", artifacts);
+  };
+
+  panel.classList.remove("hidden");
+  updateDemoFlowPanel(steps, "Running Source -> answer -> decision -> commitment -> brief.");
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const text = "Launch update: the team decided to keep private beta scoped until support readiness is clear. Mira will finish the launch checklist before beta expansion. Blocker: support coverage is blocking beta expansion; owner is Rina.";
+
+    mark("source", "running");
+    const source = await api(`/api/workspaces/${state.workspace.id}/sources/text`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: `P0 Demo Source ${Date.now()}`,
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        source_date: today,
+        text_content: text
+      })
+    });
+    if (source.processing_status !== "ready" || !source.text_content) throw new Error("Demo source was not ready with readable text.");
+    artifacts.source = source;
+    mark("source", "done", source.title);
+
+    mark("answer", "running");
+    const answer = await api(`/api/workspaces/${state.workspace.id}/ask`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question: "What is the launch plan and what follow-up matters?"})
+    });
+    if (!answer.citations?.length) throw new Error("Demo answer did not include citations.");
+    artifacts.answer = answer;
+    renderAnswer(answer);
+    const citation = answer.citations[0];
+    mark("answer", "done", `${answer.citations.length} citation${answer.citations.length === 1 ? "" : "s"}`);
+
+    mark("decision", "running");
+    const decision = await api(`/api/workspaces/${state.workspace.id}/decisions`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: "Keep private beta scoped",
+        context: "Private beta remains scoped until support readiness is clear.",
+        decision_date: today,
+        owner: "Mira",
+        status: "active",
+        evidence_source_id: citation.source_id || source.id,
+        evidence_text: citation.quote || citation.evidence_text,
+        location_hint: citation.location_hint || citation.source_location
+      })
+    });
+    if (decision.record_state !== "accepted") throw new Error("Demo decision was not accepted.");
+    artifacts.decision = decision;
+    mark("decision", "done", decision.title);
+
+    mark("commitment", "running");
+    const commitment = await api(`/api/workspaces/${state.workspace.id}/commitments`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: "Finish launch checklist",
+        description: "Complete the checklist before beta expansion.",
+        owner: "Mira",
+        due_date: yesterday,
+        due_date_known: true,
+        status: "open",
+        evidence_source_id: citation.source_id || source.id,
+        evidence_text: citation.quote || citation.evidence_text,
+        location_hint: citation.location_hint || citation.source_location
+      })
+    });
+    if (commitment.record_state !== "accepted") throw new Error("Demo commitment was not accepted.");
+    artifacts.commitment = commitment;
+    mark("commitment", "done", commitment.title);
+
+    mark("brief", "running");
+    const brief = await api(`/api/workspaces/${state.workspace.id}/briefs/daily`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({brief_date: today, window_days: 7})
+    });
+    if (brief.brief_type !== "daily" || !brief.summary) throw new Error("Demo Daily Brief was not saved correctly.");
+    artifacts.brief = brief;
+    mark("brief", "done", brief.title);
+
+    mark("dashboard", "running");
+    await refreshWorkspace();
+    await loadDashboard();
+    artifacts.dashboard = true;
+    mark("dashboard", "done", "Dashboard reflects saved records");
+    updateDemoFlowPanel(steps, "End-to-end demo complete. Created ready source, cited answer, accepted decision, accepted commitment, saved Daily Brief, and refreshed the dashboard.", artifacts);
+  } catch (error) {
+    currentStep.state = "failed";
+    currentStep.detail = error.message;
+    updateDemoFlowPanel(steps, `Demo incomplete. Missing or invalid product record: ${currentStep.label}.`, artifacts);
+    toast(error.message);
+  }
+}
+
 async function loadBriefs(selectedBriefId = null) {
   const workspaceId = state.workspace.id;
+  const focus = consumeFocus("brief");
+  selectedBriefId = selectedBriefId || focus?.id || null;
   const briefs = await api(`/api/workspaces/${workspaceId}/briefs`);
   const selectedBrief = selectedBriefId
     ? await api(`/api/workspaces/${workspaceId}/briefs/${selectedBriefId}`)
@@ -120,6 +330,7 @@ async function loadBriefs(selectedBriefId = null) {
   qs("#briefPanel").innerHTML = selectedBrief ? renderBrief(selectedBrief) : empty("No daily brief has been generated yet.");
   qs("#briefList").innerHTML = briefs.length ? briefs.map(renderBriefListItem).join("") : empty("No briefs have been created yet.");
   bindBriefActions();
+  if (focus && selectedBrief) focusRecordElement(qs("#briefPanel .brief-card"));
 }
 
 function renderBriefListItem(brief) {
@@ -163,6 +374,7 @@ function bindBriefActions() {
 
 async function loadDecisions() {
   const workspaceId = state.workspace.id;
+  const focus = consumeFocus("decisions");
   const [decisions, suggestions] = await Promise.all([
     api(`/api/workspaces/${workspaceId}/decisions`),
     api(`/api/workspaces/${workspaceId}/decision_suggestions`)
@@ -170,10 +382,11 @@ async function loadDecisions() {
   qs("#decisionList").innerHTML = decisions.length ? decisions.map(renderDecisionCard).join("") : empty("No accepted decisions yet. Create one manually or accept a suggested decision.");
   qs("#decisionInbox").innerHTML = suggestions.length ? suggestions.map(renderDecisionSuggestion).join("") : empty("No suggested decisions are waiting for approval.");
   bindDecisionActions();
+  if (focus) focusRecordElement(qs(`#decisionList [data-record-id="${focus.id}"]`));
 }
 
 function renderDecisionCard(decision) {
-  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(labelize(decision.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionEvidence(decision)}</div></article>`;
+  return `<article class="row-card" data-record-id="${escapeHtml(decision.id)}"><div><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(labelize(decision.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionEvidence(decision)}</div></article>`;
 }
 
 function renderDecisionSuggestion(decision) {
@@ -220,6 +433,8 @@ function bindDecisionActions() {
 
 async function loadCommitments() {
   const workspaceId = state.workspace.id;
+  const focus = consumeFocus("commitments");
+  if (focus) qs("#commitmentStatusFilter").value = "";
   const query = queryString({status: qs("#commitmentStatusFilter")?.value});
   const [commitments, suggestions] = await Promise.all([
     api(`/api/workspaces/${workspaceId}/commitments${query}`),
@@ -228,10 +443,11 @@ async function loadCommitments() {
   qs("#commitmentList").innerHTML = commitments.length ? commitments.map(renderCommitmentCard).join("") : empty("No accepted commitments yet. Create one manually or accept a suggested commitment.");
   qs("#commitmentInbox").innerHTML = suggestions.length ? suggestions.map(renderCommitmentSuggestion).join("") : empty("No suggested commitments are waiting for approval.");
   bindCommitmentActions();
+  if (focus) focusRecordElement(qs(`#commitmentList [data-record-id="${focus.id}"]`));
 }
 
 function renderCommitmentCard(commitment) {
-  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">${escapeHtml(labelize(commitment.source_origin || "manual"))}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(commitment.title)}</h3><p>${escapeHtml(commitment.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}</div><div class="source-actions"><select data-commitment-status="${escapeHtml(commitment.id)}" aria-label="Update commitment status"><option value="open" ${commitment.status === "open" ? "selected" : ""}>Open</option><option value="done" ${commitment.status === "done" ? "selected" : ""}>Done</option><option value="overdue" ${commitment.status === "overdue" ? "selected" : ""}>Overdue</option><option value="blocked" ${commitment.status === "blocked" ? "selected" : ""}>Blocked</option></select></div></article>`;
+  return `<article class="row-card" data-record-id="${escapeHtml(commitment.id)}"><div><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">${escapeHtml(labelize(commitment.source_origin || "manual"))}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(commitment.title)}</h3><p>${escapeHtml(commitment.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}</div><div class="source-actions"><select data-commitment-status="${escapeHtml(commitment.id)}" aria-label="Update commitment status"><option value="open" ${commitment.status === "open" ? "selected" : ""}>Open</option><option value="done" ${commitment.status === "done" ? "selected" : ""}>Done</option><option value="overdue" ${commitment.status === "overdue" ? "selected" : ""}>Overdue</option><option value="blocked" ${commitment.status === "blocked" ? "selected" : ""}>Blocked</option></select></div></article>`;
 }
 
 function renderCommitmentSuggestion(commitment) {
@@ -287,6 +503,11 @@ function bindCommitmentActions() {
 
 async function loadRisks() {
   const workspaceId = state.workspace.id;
+  const focus = consumeFocus("risks");
+  if (focus) {
+    qs("#riskSeverityFilter").value = "";
+    qs("#riskStatusFilter").value = "";
+  }
   const query = queryString({
     severity: qs("#riskSeverityFilter")?.value,
     status: qs("#riskStatusFilter")?.value
@@ -294,10 +515,11 @@ async function loadRisks() {
   const risks = await api(`/api/workspaces/${workspaceId}/risks${query}`);
   qs("#riskList").innerHTML = risks.length ? risks.map(renderRiskCard).join("") : empty("No accepted risks have been captured yet. Create one manually or extract risk suggestions from ready sources.");
   bindRiskActions();
+  if (focus) focusRecordElement(qs(`#riskList [data-record-id="${focus.id}"]`));
 }
 
 function renderRiskCard(risk) {
-  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span><span class="stat-pill">${escapeHtml(risk.severity)}</span><span class="stat-pill">${escapeHtml(labelize(risk.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(risk.evidence_count ? `${risk.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(risk.title)}</h3><p>${escapeHtml(risk.description)}</p><p><strong>Owner:</strong> ${escapeHtml(risk.owner)}</p>${risk.mitigation ? `<p><strong>Mitigation:</strong> ${escapeHtml(risk.mitigation)}</p>` : ""}${renderRecordEvidence(risk)}</div><div class="source-actions"><select data-risk-status="${escapeHtml(risk.id)}" aria-label="Update risk status"><option value="open" ${risk.status === "open" ? "selected" : ""}>Open</option><option value="mitigated" ${risk.status === "mitigated" ? "selected" : ""}>Mitigated</option><option value="resolved" ${risk.status === "resolved" ? "selected" : ""}>Resolved</option></select></div></article>`;
+  return `<article class="row-card" data-record-id="${escapeHtml(risk.id)}"><div><div class="source-meta"><span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span><span class="stat-pill">${escapeHtml(risk.severity)}</span><span class="stat-pill">${escapeHtml(labelize(risk.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(risk.evidence_count ? `${risk.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(risk.title)}</h3><p>${escapeHtml(risk.description)}</p><p><strong>Owner:</strong> ${escapeHtml(risk.owner)}</p>${risk.mitigation ? `<p><strong>Mitigation:</strong> ${escapeHtml(risk.mitigation)}</p>` : ""}${renderRecordEvidence(risk)}</div><div class="source-actions"><select data-risk-status="${escapeHtml(risk.id)}" aria-label="Update risk status"><option value="open" ${risk.status === "open" ? "selected" : ""}>Open</option><option value="mitigated" ${risk.status === "mitigated" ? "selected" : ""}>Mitigated</option><option value="resolved" ${risk.status === "resolved" ? "selected" : ""}>Resolved</option></select></div></article>`;
 }
 
 function bindRiskActions() {
@@ -525,6 +747,7 @@ function bindEvents() {
   qs("#briefDateInput").value = new Date().toISOString().slice(0, 10);
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelectorAll("[data-source-mode]").forEach((button) => button.addEventListener("click", () => setSourceMode(button.dataset.sourceMode)));
+  qs("#runDemoFlowButton").addEventListener("click", () => runDemoFlow().catch((error) => toast(error.message)));
   qs("#generateBriefButton").addEventListener("click", async () => {
     const brief = await api(`/api/workspaces/${state.workspace.id}/briefs/daily`, {
       method: "POST",

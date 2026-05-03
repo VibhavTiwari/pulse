@@ -200,6 +200,21 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def dashboard(dashboard) do
+    %{
+      summary: dashboard.summary,
+      latest_brief: if(dashboard.latest_brief, do: brief(dashboard.latest_brief)),
+      recent_decisions: Enum.map(dashboard.recent_decisions, &decision/1),
+      overdue_commitments: Enum.map(dashboard.overdue_commitments, &commitment/1),
+      open_risks: Enum.map(dashboard.open_risks, &risk/1),
+      counts: %{
+        recent_decisions: length(dashboard.recent_decisions),
+        overdue_commitments: length(dashboard.overdue_commitments),
+        open_risks: length(dashboard.open_risks)
+      }
+    }
+  end
+
   def meeting(meeting) do
     base = %{
       id: meeting.id,
