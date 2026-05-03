@@ -49,6 +49,75 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def search_result(result) do
+    Map.take(result, [
+      :passage_id,
+      :source_passage_id,
+      :source_id,
+      :source_title,
+      :source_type,
+      :source_date,
+      :passage_text,
+      :location_hint,
+      :rank,
+      :score
+    ])
+  end
+
+  def ask_thread(thread) do
+    base = %{
+      id: thread.id,
+      workspace_id: thread.workspace_id,
+      title: thread.title,
+      created_at: thread.inserted_at,
+      updated_at: thread.updated_at
+    }
+
+    if Map.has_key?(thread, :messages) and is_list(thread.messages) do
+      Map.put(base, :messages, Enum.map(thread.messages, &ask_message/1))
+    else
+      base
+    end
+  end
+
+  def ask_message(message) do
+    base = %{
+      id: message.id,
+      workspace_id: message.workspace_id,
+      ask_thread_id: message.ask_thread_id,
+      role: message.role,
+      content: message.content,
+      evidence_state: message.evidence_state,
+      created_at: message.inserted_at
+    }
+
+    if Ecto.assoc_loaded?(message.citations) do
+      Map.put(base, :citations, Enum.map(message.citations, &answer_citation/1))
+    else
+      base
+    end
+  end
+
+  def answer_citation(citation) do
+    %{
+      id: citation.id,
+      workspace_id: citation.workspace_id,
+      ask_message_id: citation.ask_message_id,
+      source_id: citation.source_id,
+      source_passage_id: citation.source_passage_id,
+      source_title: if(Ecto.assoc_loaded?(citation.source), do: citation.source.title, else: nil),
+      source_type:
+        if(Ecto.assoc_loaded?(citation.source), do: citation.source.source_type, else: nil),
+      source_date:
+        if(Ecto.assoc_loaded?(citation.source), do: citation.source.source_date, else: nil),
+      evidence_text: citation.evidence_text,
+      quote: citation.evidence_text,
+      location_hint: citation.location_hint,
+      source_location: citation.location_hint,
+      created_at: citation.inserted_at
+    }
+  end
+
   def record(record, type) do
     base =
       record

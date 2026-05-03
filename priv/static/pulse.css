@@ -21,7 +21,9 @@ h3 { font-size: 16px; }
 .health-row, .source-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .health-row { justify-content: flex-end; }
 .stat-pill, .status { display: inline-flex; align-items: center; min-height: 30px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 13px; }
-.status.ready, .status.done, .status.resolved, .status.mitigated { color: var(--ok); background: #edf8f2; border-color: #cce8d9; }
+.status.ready, .status.done, .status.resolved, .status.mitigated, .status.strong { color: var(--ok); background: #edf8f2; border-color: #cce8d9; }
+.status.weak, .status.mixed { color: #8a5a12; background: #fff7e8; border-color: #efd7ad; }
+.status.none { color: var(--muted); background: #f5f7fa; border-color: var(--line); }
 .status.failed, .status.deleted, .status.blocked, .status.open { color: var(--danger); background: #fff0f0; border-color: #f2cece; }
 .setup-panel, .view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 24px; }
 .setup-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
@@ -51,6 +53,8 @@ label span { display: block; color: var(--muted); font-size: 12px; line-height: 
 .mode-option { min-height: 36px; border-radius: 6px; color: var(--muted); background: transparent; transition: background .16s ease, color .16s ease; }
 .mode-option.active { background: #fff; color: var(--accent); box-shadow: 0 6px 18px rgba(35,45,60,.08); }
 .answer-panel { min-height: 170px; margin-top: 16px; padding: 16px; background: var(--panel-strong); }
+.ask-turn { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.ask-turn:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .source-preview { padding: 16px; min-width: 0; }
 .citation-list { display: grid; gap: 8px; margin-top: 14px; }
 .citation { border: 1px solid #cbdde0; border-radius: 8px; background: #fff; padding: 10px; text-align: left; color: var(--text); }

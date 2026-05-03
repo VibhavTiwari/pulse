@@ -1,4 +1,4 @@
-const state = {workspace: null, activeView: "brief", sourceMode: "manual_entry", selectedSourceId: null};
+const state = {workspace: null, activeView: "brief", sourceMode: "manual_entry", selectedSourceId: null, askThreadId: null};
 const views = {brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
 
 const qs = (selector) => document.querySelector(selector);
@@ -113,8 +113,12 @@ async function loadViewData() {
 }
 
 function renderAnswer(answer) {
+  state.askThreadId = answer.thread_id || state.askThreadId;
   const citations = answer.citations || [];
-  qs("#answerPanel").innerHTML = `<p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map((citation) => `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} · ${escapeHtml(citation.source_location)}</strong><span>${escapeHtml(citation.quote)}</span></button>`).join("")}</div>` : `<p class="empty">No citations were found, so this answer is not source-backed.</p>`}`;
+  const turn = `<article class="ask-turn"><p class="label">Question</p><p>${escapeHtml(answer.question)}</p><div class="source-meta"><span class="status ${escapeHtml(answer.evidence_state || "none")}">${escapeHtml(answer.evidence_state || "none")} evidence</span></div><p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map((citation) => `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} · ${escapeHtml(citation.source_location || citation.location_hint || "source passage")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`).join("")}</div>` : `<p class="empty">No citations were found, so Pulse is not making a project-truth claim.</p>`}</article>`;
+  const panel = qs("#answerPanel");
+  if (panel.querySelector(".empty") && !panel.querySelector(".ask-turn")) panel.innerHTML = "";
+  panel.insertAdjacentHTML("beforeend", turn);
   document.querySelectorAll(".citation").forEach((button) => button.addEventListener("click", () => {
     setView("sources");
     loadSourcePreview(button.dataset.sourceId);
@@ -235,7 +239,15 @@ function bindEvents() {
     event.preventDefault();
     const question = qs("#questionInput").value.trim();
     if (!question) return;
-    renderAnswer(await api(`/api/workspaces/${state.workspace.id}/ask`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})}));
+    const askPath = state.askThreadId
+      ? `/api/workspaces/${state.workspace.id}/ask_threads/${state.askThreadId}/messages`
+      : `/api/workspaces/${state.workspace.id}/ask`;
+    renderAnswer(await api(askPath, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})}));
+    qs("#questionInput").value = "";
+  });
+  qs("#newAskThread").addEventListener("click", () => {
+    state.askThreadId = null;
+    qs("#answerPanel").innerHTML = `<p class="empty">Ask Pulse answers only from ready project sources and shows citations when evidence exists.</p>`;
   });
 }
 

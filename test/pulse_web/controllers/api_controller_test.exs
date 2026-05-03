@@ -24,7 +24,40 @@ defmodule PulseWeb.ApiControllerTest do
 
     answer = json_response(conn, 200)
     assert answer["answer_id"]
+    assert answer["thread_id"]
+    assert answer["evidence_state"] in ["strong", "weak", "mixed"]
     assert [_citation] = answer["citations"]
+
+    conn =
+      post(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/ask_threads/#{answer["thread_id"]}/messages",
+        %{
+          question: "What kind of beta?"
+        }
+      )
+
+    follow_up = json_response(conn, 200)
+    assert follow_up["thread_id"] == answer["thread_id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/ask_threads/#{answer["thread_id"]}")
+    thread = json_response(conn, 200)
+    assert length(thread["messages"]) == 4
+  end
+
+  test "ask API returns explicit no-evidence state without citations", %{conn: conn} do
+    conn = post(conn, ~p"/api/workspaces", %{name: "No Evidence API", root_path: "C:/tmp/none"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/ask", %{
+        question: "What is the pricing model?"
+      })
+
+    answer = json_response(conn, 200)
+    assert answer["evidence_state"] == "none"
+    assert answer["citations"] == []
+    assert answer["answer"] =~ "do not have enough evidence"
   end
 
   test "source library APIs create, filter, view, and update sources", %{conn: conn} do

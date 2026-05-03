@@ -2,6 +2,7 @@ defmodule Pulse.Sources do
   import Ecto.Query
 
   alias Ecto.Multi
+  alias Pulse.Intelligence
   alias Pulse.Repo
   alias Pulse.Sources.{Source, SourceChunk}
 
@@ -78,6 +79,9 @@ defmodule Pulse.Sources do
       end)
       |> then(&{:ok, &1})
     end)
+    |> Multi.run(:passages, fn repo, %{source: source} ->
+      {:ok, Intelligence.replace_source_passages(repo, source)}
+    end)
     |> Repo.transaction()
     |> case do
       {:ok, %{source: source, chunks: chunks}} -> {:ok, Map.put(source, :chunks, chunks)}
@@ -151,6 +155,9 @@ defmodule Pulse.Sources do
       end)
       |> then(&{:ok, &1})
     end)
+    |> Multi.run(:passages, fn repo, %{source: source} ->
+      {:ok, Intelligence.replace_source_passages(repo, source)}
+    end)
     |> Repo.transaction()
     |> case do
       {:ok, %{source: source, chunks: chunks}} -> {:ok, Map.put(source, :chunks, chunks)}
@@ -165,9 +172,16 @@ defmodule Pulse.Sources do
       "text_content" => source.text_content
     }
 
-    source
-    |> Source.status_changeset(attrs)
-    |> Repo.update()
+    Multi.new()
+    |> Multi.update(:source, Source.status_changeset(source, attrs))
+    |> Multi.run(:passages, fn repo, %{source: source} ->
+      {:ok, Intelligence.replace_source_passages(repo, source)}
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{source: source}} -> {:ok, source}
+      {:error, _step, changeset, _changes} -> {:error, changeset}
+    end
   end
 
   def delete_source(%Source{} = source) do
