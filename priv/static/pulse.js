@@ -102,8 +102,7 @@ async function loadViewData() {
   }
 
   if (state.activeView === "meetings") {
-    const meetings = await api(`/api/workspaces/${workspaceId}/meetings`);
-    qs("#meetingList").innerHTML = meetings.length ? meetings.map((meeting) => `<article class="card"><p class="label">${escapeHtml(formatDate(meeting.meeting_date))}</p><h3>${escapeHtml(meeting.title)}</h3><p>${escapeHtml(meeting.description || "")}</p><p><strong>Attendees:</strong> ${escapeHtml((meeting.attendees || []).join(", "))}</p></article>`).join("") : empty("No meeting prep has been created yet.");
+    await loadMeetings();
   }
 
   if (state.activeView === "sources") await loadSources();
@@ -283,6 +282,72 @@ function bindCommitmentActions() {
   }));
 }
 
+async function loadMeetings(selectedMeetingId = null) {
+  const workspaceId = state.workspace.id;
+  const meetings = await api(`/api/workspaces/${workspaceId}/meetings`);
+  qs("#meetingList").innerHTML = meetings.length ? meetings.map(renderMeetingCard).join("") : empty("No meeting prep has been created yet.");
+  bindMeetingListActions();
+
+  if (selectedMeetingId || meetings[0]) {
+    await loadMeetingPrep(selectedMeetingId || meetings[0].id);
+  } else {
+    qs("#meetingPrepPanel").innerHTML = empty("Create a meeting to prepare with accepted decisions, open commitments, and agenda topics.");
+  }
+}
+
+function renderMeetingCard(meeting) {
+  return `<article class="row-card"><button type="button" data-meeting-id="${escapeHtml(meeting.id)}"><p class="label">${escapeHtml(formatDate(meeting.meeting_date))}</p><h3>${escapeHtml(meeting.title)}</h3><p>${escapeHtml(meeting.description || "")}</p><p><strong>Attendees:</strong> ${escapeHtml((meeting.attendees || []).join(", ") || "Not specified")}</p></button></article>`;
+}
+
+function bindMeetingListActions() {
+  document.querySelectorAll("[data-meeting-id]").forEach((button) => button.addEventListener("click", () => {
+    loadMeetingPrep(button.dataset.meetingId).catch((error) => toast(error.message));
+  }));
+}
+
+async function loadMeetingPrep(meetingId) {
+  const prep = await api(`/api/workspaces/${state.workspace.id}/meetings/${meetingId}/prep`);
+  qs("#meetingPrepPanel").innerHTML = renderMeetingPrep(prep);
+  bindMeetingPrepActions();
+}
+
+function renderMeetingPrep(prep) {
+  const meeting = prep.meeting;
+  return `<div class="source-meta"><span class="status ready">prep</span><span class="stat-pill">${escapeHtml(formatDate(meeting.meeting_date))}</span></div><h3>${escapeHtml(meeting.title)}</h3><p>${escapeHtml(meeting.description || "No meeting context provided.")}</p><p><strong>Attendees:</strong> ${escapeHtml((meeting.attendees || []).join(", ") || "Not specified")}</p><div class="source-actions"><button id="refreshMeetingPrep" class="secondary-button" type="button" data-refresh-meeting="${escapeHtml(meeting.id)}">Refresh prep</button></div>${renderPrepSection("Relevant decisions", prep.relevant_decisions || [], renderPrepDecision)}${renderPrepSection("Open commitments", prep.open_commitments || [], renderPrepCommitment)}${renderAgenda(prep.agenda_items || [])}`;
+}
+
+function renderPrepSection(title, items, renderItem) {
+  return `<section class="brief-section"><h4>${escapeHtml(title)}</h4><div class="brief-items">${items.length ? items.map(renderItem).join("") : empty(`No ${title.toLowerCase()} found.`)}</div></section>`;
+}
+
+function renderPrepDecision(decision) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h5>${escapeHtml(decision.title)}</h5><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderRecordEvidence(decision)}<div class="source-actions"><button class="secondary-button" type="button" data-open-record="decisions">Open decision</button></div></article>`;
+}
+
+function renderPrepCommitment(commitment) {
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(commitment.status)}">${escapeHtml(commitment.status)}</span><span class="stat-pill">Due ${escapeHtml(formatDate(commitment.due_date) || "unknown")}</span><span class="stat-pill">${escapeHtml(commitment.evidence_count ? `${commitment.evidence_count} evidence` : "No evidence")}</span></div><h5>${escapeHtml(commitment.title)}</h5><p>${escapeHtml(commitment.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(commitment.owner)}</p>${renderRecordEvidence(commitment)}<div class="source-actions"><button class="secondary-button" type="button" data-open-record="commitments">Open commitment</button></div></article>`;
+}
+
+function renderAgenda(items) {
+  return `<section class="brief-section"><h4>Suggested agenda</h4><div class="brief-items">${items.map((item) => `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(item.evidence_state || "none")}">${escapeHtml(item.evidence_state || "none")} evidence</span>${item.linked_entity_type ? `<span class="stat-pill">${escapeHtml(labelize(item.linked_entity_type))}</span>` : ""}</div><h5>${escapeHtml(item.title)}</h5><p>${escapeHtml(item.reason)}</p>${item.linked_entity_type === "decision" ? `<button class="secondary-button" type="button" data-open-record="decisions">Open decision</button>` : ""}${item.linked_entity_type === "commitment" ? `<button class="secondary-button" type="button" data-open-record="commitments">Open commitment</button>` : ""}</article>`).join("")}</div></section>`;
+}
+
+function bindMeetingPrepActions() {
+  qs("#refreshMeetingPrep")?.addEventListener("click", async (event) => {
+    const prep = await api(`/api/workspaces/${state.workspace.id}/meetings/${event.currentTarget.dataset.refreshMeeting}/prep/refresh`, {method: "POST"});
+    qs("#meetingPrepPanel").innerHTML = renderMeetingPrep(prep);
+    bindMeetingPrepActions();
+    toast("Meeting prep refreshed.");
+  });
+  document.querySelectorAll("#meetingsView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("#meetingsView [data-open-record]").forEach((button) => button.addEventListener("click", () => {
+    setView(button.dataset.openRecord);
+  }));
+}
+
 function renderAnswer(answer) {
   state.askThreadId = answer.thread_id || state.askThreadId;
   const citations = answer.citations || [];
@@ -381,6 +446,7 @@ function bindEvents() {
   qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#commitmentStatusFilter").addEventListener("change", () => loadCommitments().catch((error) => toast(error.message)));
+  qs("#meetingDate").value = new Date().toISOString().slice(0, 10);
   qs("#workspaceForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const workspace = await api("/api/workspaces", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: qs("#workspaceInput").value.trim()})});
@@ -442,6 +508,25 @@ function bindEvents() {
     const suggestions = await api(`/api/workspaces/${state.workspace.id}/decisions/extract`, {method: "POST"});
     toast(suggestions.length ? `${suggestions.length} decision suggestion${suggestions.length === 1 ? "" : "s"} found.` : "No clear decisions found in ready sources.");
     await loadDecisions();
+  });
+  qs("#meetingForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const meeting = await api(`/api/workspaces/${state.workspace.id}/meetings`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: qs("#meetingTitle").value.trim(),
+        meeting_date: qs("#meetingDate").value,
+        description: qs("#meetingDescription").value.trim(),
+        attendees: qs("#meetingAttendees").value.split(",").map((attendee) => attendee.trim()).filter(Boolean)
+      })
+    });
+    qs("#meetingTitle").value = "";
+    qs("#meetingDescription").value = "";
+    qs("#meetingAttendees").value = "";
+    toast(`Meeting created: ${meeting.title}`);
+    await loadMeetings(meeting.id);
+    await refreshWorkspace();
   });
   qs("#sourceForm").addEventListener("submit", async (event) => {
     event.preventDefault();

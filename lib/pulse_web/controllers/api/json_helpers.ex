@@ -169,6 +169,32 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def meeting(meeting) do
+    base = %{
+      id: meeting.id,
+      workspace_id: meeting.workspace_id,
+      title: meeting.title,
+      meeting_date: meeting.meeting_date,
+      description: meeting.description,
+      attendees: meeting.attendees || [],
+      created_at: meeting.inserted_at,
+      updated_at: meeting.updated_at
+    }
+
+    base
+    |> maybe_put_loaded(:decisions, meeting, &decision/1)
+    |> maybe_put_loaded(:commitments, meeting, &commitment/1)
+  end
+
+  def meeting_prep(prep) do
+    %{
+      meeting: meeting(prep.meeting),
+      relevant_decisions: Enum.map(prep.relevant_decisions, &decision/1),
+      open_commitments: Enum.map(prep.open_commitments, &commitment/1),
+      agenda_items: prep.agenda_items
+    }
+  end
+
   def brief(brief) do
     %{
       id: brief.id,
@@ -239,4 +265,14 @@ defmodule PulseWeb.Api.JSONHelpers do
   defp singular(:commitments), do: "commitment"
   defp singular(:risks), do: "risk"
   defp singular(:meetings), do: "meeting"
+
+  defp maybe_put_loaded(map, assoc, record, fun) do
+    value = Map.get(record, assoc)
+
+    if is_list(value) and Ecto.assoc_loaded?(value) do
+      Map.put(map, assoc, Enum.map(value, fun))
+    else
+      map
+    end
+  end
 end

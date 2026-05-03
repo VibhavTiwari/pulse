@@ -76,6 +76,29 @@ defmodule PulseWeb.Router do
         BriefController,
         :item_evidence
 
+    get "/workspaces/:workspace_id/meetings", MeetingController, :index
+    post "/workspaces/:workspace_id/meetings", MeetingController, :create
+    get "/workspaces/:workspace_id/meetings/:id", MeetingController, :show
+    patch "/workspaces/:workspace_id/meetings/:id", MeetingController, :update
+    get "/workspaces/:workspace_id/meetings/:id/prep", MeetingController, :prep
+    post "/workspaces/:workspace_id/meetings/:id/prep/refresh", MeetingController, :refresh_prep
+
+    post "/workspaces/:workspace_id/meetings/:id/decisions/:decision_id",
+         MeetingController,
+         :link_decision
+
+    delete "/workspaces/:workspace_id/meetings/:id/decisions/:decision_id",
+           MeetingController,
+           :unlink_decision
+
+    post "/workspaces/:workspace_id/meetings/:id/commitments/:commitment_id",
+         MeetingController,
+         :link_commitment
+
+    delete "/workspaces/:workspace_id/meetings/:id/commitments/:commitment_id",
+           MeetingController,
+           :unlink_commitment
+
     post "/workspaces/:workspace_id/evidence", EvidenceController, :create
     get "/workspaces/:workspace_id/:collection", RecordController, :index
     post "/workspaces/:workspace_id/:collection", RecordController, :create

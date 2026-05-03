@@ -318,4 +318,96 @@ defmodule PulseWeb.ApiControllerTest do
     assert [%{"id" => brief_id}] = json_response(conn, 200)
     assert brief_id == brief["id"]
   end
+
+  test "meeting prep APIs create meetings and return grounded prep", %{conn: conn} do
+    today = Date.utc_today()
+    conn = post(conn, ~p"/api/workspaces", %{name: "Meeting API", root_path: "C:/tmp/mp-api"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Meeting Prep Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        source_date: Date.to_iso8601(today),
+        text_content:
+          "The team decided to keep private beta scoped. Mira will finish launch checklist."
+      })
+
+    source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Private beta scope",
+        context: "Keep private beta scoped until readiness is clear.",
+        decision_date: Date.to_iso8601(today),
+        owner: "Mira",
+        status: "active",
+        evidence_source_id: source["id"],
+        evidence_text: "The team decided to keep private beta scoped."
+      })
+
+    decision = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments", %{
+        title: "Finish launch checklist",
+        description: "Checklist gates the private beta launch.",
+        owner: "Mira",
+        due_date_known: false,
+        status: "open",
+        evidence_source_id: source["id"],
+        evidence_text: "Mira will finish launch checklist."
+      })
+
+    commitment = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments", %{
+        title: "Done launch follow-up",
+        owner: "Mira",
+        due_date_known: false,
+        status: "done"
+      })
+
+    done_commitment = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/meetings", %{
+        title: "Private beta launch review",
+        meeting_date: Date.to_iso8601(today),
+        description: "Review launch checklist and private beta scope.",
+        attendees: ["Mira", "Rina"]
+      })
+
+    meeting = json_response(conn, 200)
+    assert meeting["title"] == "Private beta launch review"
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/meetings/#{meeting["id"]}/prep")
+    prep = json_response(conn, 200)
+    assert prep["meeting"]["id"] == meeting["id"]
+    assert [%{"id" => decision_id, "evidence" => [_]}] = prep["relevant_decisions"]
+    assert decision_id == decision["id"]
+    assert [%{"id" => commitment_id, "evidence" => [_]}] = prep["open_commitments"]
+    assert commitment_id == commitment["id"]
+    refute Enum.any?(prep["open_commitments"], &(&1["id"] == done_commitment["id"]))
+    assert Enum.any?(prep["agenda_items"], &(&1["linked_entity_id"] == decision["id"]))
+    assert Enum.any?(prep["agenda_items"], &(&1["linked_entity_id"] == commitment["id"]))
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/meetings/#{meeting["id"]}/prep/refresh")
+
+    refreshed = json_response(conn, 200)
+    assert Enum.any?(refreshed["meeting"]["decisions"], &(&1["id"] == decision["id"]))
+    assert Enum.any?(refreshed["meeting"]["commitments"], &(&1["id"] == commitment["id"]))
+
+    conn =
+      delete(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/meetings/#{meeting["id"]}/commitments/#{commitment["id"]}"
+      )
+
+    unlinked = json_response(conn, 200)
+    refute Enum.any?(unlinked["commitments"], &(&1["id"] == commitment["id"]))
+  end
 end

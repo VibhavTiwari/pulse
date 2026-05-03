@@ -55,6 +55,7 @@ label span { display: block; color: var(--muted); font-size: 12px; line-height: 
 .row-card { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 14px; }
 .row-card button { color: var(--accent); background: transparent; text-align: left; }
 .ask-layout, .sources-layout { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 18px; }
+.meeting-layout { display: grid; grid-template-columns: 360px minmax(0,1fr); gap: 18px; align-items: start; }
 .ask-form, .source-form, .upload-panel { display: grid; gap: 12px; }
 .source-form, .upload-panel { padding: 14px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .form-grid, .source-toolbar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
@@ -79,4 +80,4 @@ label span { display: block; color: var(--muted); font-size: 12px; line-height: 
 .metadata-form, .text-edit-form { display: grid; gap: 10px; margin: 14px 0; }
 .empty { color: var(--muted); padding: 20px 0; }
 .toast { position: fixed; right: 20px; bottom: 20px; max-width: 360px; background: #17202a; color: white; border-radius: 8px; box-shadow: var(--shadow); padding: 12px 14px; }
-@media (max-width: 900px) { .app-shell, .ask-layout, .sources-layout, .form-grid, .source-toolbar, .source-detail-grid { grid-template-columns: 1fr; } .sidebar { position: static; min-height: auto; } .nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); } .topbar, .setup-panel, .inline-form { align-items: stretch; flex-direction: column; } .health-row { justify-content: flex-start; } .main { padding: 18px; } }
+@media (max-width: 900px) { .app-shell, .ask-layout, .sources-layout, .meeting-layout, .form-grid, .source-toolbar, .source-detail-grid { grid-template-columns: 1fr; } .sidebar { position: static; min-height: auto; } .nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); } .topbar, .setup-panel, .inline-form { align-items: stretch; flex-direction: column; } .health-row { justify-content: flex-start; } .main { padding: 18px; } }
