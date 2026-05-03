@@ -1,4 +1,4 @@
-const state = {workspace: null, activeView: "brief"};
+const state = {workspace: null, activeView: "brief", sourceMode: "manual_entry", selectedSourceId: null};
 const views = {brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
 
 const qs = (selector) => document.querySelector(selector);
@@ -30,6 +30,19 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"});
+}
+
+function labelize(value) {
+  return String(value ?? "").replaceAll("_", " ");
+}
+
+function queryString(params) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) search.set(key, value);
+  });
+  const value = search.toString();
+  return value ? `?${value}` : "";
 }
 
 function setWorkspace(workspace) {
@@ -109,11 +122,15 @@ function renderAnswer(answer) {
 }
 
 async function loadSources() {
-  const sources = await api(`/api/workspaces/${state.workspace.id}/sources`);
-  qs("#sourceList").innerHTML = sources.length ? sources.map((source) => `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span></div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || source.source_type)}</p></button><button type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`).join("") : empty("Upload a .txt or .md source to start building evidence.");
+  const query = queryString({
+    processing_status: qs("#sourceStatusFilter")?.value,
+    source_type: qs("#sourceTypeFilter")?.value
+  });
+  const sources = await api(`/api/workspaces/${state.workspace.id}/sources${query}`);
+  qs("#sourceList").innerHTML = sources.length ? sources.map((source) => `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span><span class="stat-pill">${escapeHtml(labelize(source.origin))}</span>${source.source_date ? `<span class="stat-pill">${escapeHtml(formatDate(source.source_date))}</span>` : ""}</div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || "Manual source")} · Updated ${escapeHtml(formatDate(source.updated_at))}</p></button><button class="danger-button" type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`).join("") : empty("Source Library is where project evidence starts. Add pasted text or upload a readable .txt/.md file.");
   document.querySelectorAll("[data-source-id]").forEach((button) => button.addEventListener("click", () => loadSourcePreview(button.dataset.sourceId)));
   document.querySelectorAll("[data-delete-source]").forEach((button) => button.addEventListener("click", async () => {
-    await api(`/api/sources/${button.dataset.deleteSource}`, {method: "DELETE"});
+    await api(`/api/workspaces/${state.workspace.id}/sources/${button.dataset.deleteSource}`, {method: "DELETE"});
     toast("Source removed from active search.");
     await loadSources();
     await refreshWorkspace();
@@ -121,28 +138,97 @@ async function loadSources() {
 }
 
 async function loadSourcePreview(sourceId) {
-  const source = await api(`/api/sources/${sourceId}`);
-  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(source.source_type)}</span></div>${(source.chunks || []).map((chunk) => `<div class="source-chunk"><p class="label">Chunk ${chunk.chunk_index + 1}</p><p>${escapeHtml(chunk.text)}</p></div>`).join("")}`;
+  state.selectedSourceId = sourceId;
+  const source = await api(`/api/workspaces/${state.workspace.id}/sources/${sourceId}`);
+  const textReady = source.processing_status === "ready" && source.text_content;
+  const textPanel = textReady
+    ? `<div class="source-text">${escapeHtml(source.text_content)}</div>`
+    : `<p class="empty">${source.processing_status === "failed" ? escapeHtml(source.error_message || "Pulse could not extract readable text from this source.") : "This source is pending readable text extraction."}</p>`;
+  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span></div><div class="source-detail-grid"><div class="source-detail"><p class="label">Origin</p><p>${escapeHtml(labelize(source.origin))}</p></div><div class="source-detail"><p class="label">Source date</p><p>${escapeHtml(formatDate(source.source_date) || "Unknown")}</p></div><div class="source-detail"><p class="label">Created</p><p>${escapeHtml(formatDate(source.created_at))}</p></div><div class="source-detail"><p class="label">Updated</p><p>${escapeHtml(formatDate(source.updated_at))}</p></div></div><form id="metadataForm" class="metadata-form"><div class="form-grid"><label><span>Title</span><input id="metadataTitle" type="text" value="${escapeHtml(source.title)}" required /></label><label><span>Type</span><select id="metadataType" required>${["note","document","transcript","meeting_note","project_update","other"].map((type) => `<option value="${type}" ${source.source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><label><span>Source date</span><input id="metadataDate" type="date" value="${escapeHtml(source.source_date || "")}" /></label></div><button type="submit">Save metadata</button></form><div class="source-actions">${source.origin === "manual_entry" ? `<button id="editTextButton" class="secondary-button" type="button">Edit text</button>` : ""}</div><h4>Readable text Pulse has stored</h4><div id="sourceTextPanel">${textPanel}</div>`;
+  qs("#metadataForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: qs("#metadataTitle").value.trim(),
+        source_type: qs("#metadataType").value,
+        source_date: qs("#metadataDate").value || null
+      })
+    });
+    toast("Source metadata saved.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  });
+  qs("#editTextButton")?.addEventListener("click", () => renderTextEditor(source));
+}
+
+function renderTextEditor(source) {
+  qs("#sourceTextPanel").innerHTML = `<form id="textEditForm" class="text-edit-form"><textarea id="sourceTextEdit" required>${escapeHtml(source.text_content || "")}</textarea><button type="submit">Save text</button></form>`;
+  qs("#textEditForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}/text`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text_content: qs("#sourceTextEdit").value})
+    });
+    toast("Source text saved.");
+    await refreshWorkspace();
+    await loadSourcePreview(source.id);
+  });
+}
+
+function setSourceMode(mode) {
+  state.sourceMode = mode;
+  document.querySelectorAll("[data-source-mode]").forEach((button) => button.classList.toggle("active", button.dataset.sourceMode === mode));
+  qs("#manualEntryPanel").classList.toggle("hidden", mode !== "manual_entry");
+  qs("#manualUploadPanel").classList.toggle("hidden", mode !== "manual_upload");
+  qs("#sourceText").required = mode === "manual_entry";
+  qs("#sourceFile").required = mode === "manual_upload";
 }
 
 function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+  document.querySelectorAll("[data-source-mode]").forEach((button) => button.addEventListener("click", () => setSourceMode(button.dataset.sourceMode)));
+  qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
+  qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#workspaceForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const workspace = await api("/api/workspaces", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: qs("#workspaceInput").value.trim()})});
     setWorkspace(workspace);
     await loadViewData();
   });
-  qs("#uploadForm").addEventListener("submit", async (event) => {
+  qs("#sourceForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const fileInput = qs("#sourceFile");
-    if (!fileInput.files.length) return;
-    const data = new FormData();
-    data.append("file", fileInput.files[0]);
-    const source = await api(`/api/workspaces/${state.workspace.id}/sources`, {method: "POST", body: data});
-    fileInput.value = "";
+    const attrs = {
+      title: qs("#sourceTitle").value.trim(),
+      source_type: qs("#sourceType").value,
+      source_date: qs("#sourceDate").value || null
+    };
+    let source;
+    if (state.sourceMode === "manual_entry") {
+      source = await api(`/api/workspaces/${state.workspace.id}/sources/text`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({...attrs, origin: "manual_entry", text_content: qs("#sourceText").value})
+      });
+      qs("#sourceText").value = "";
+    } else {
+      const fileInput = qs("#sourceFile");
+      if (!fileInput.files.length) return;
+      const data = new FormData();
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (value) data.append(key, value);
+      });
+      data.append("file", fileInput.files[0]);
+      source = await api(`/api/workspaces/${state.workspace.id}/sources`, {method: "POST", body: data});
+      fileInput.value = "";
+    }
+    qs("#sourceTitle").value = "";
+    qs("#sourceDate").value = "";
     toast(source.processing_status === "ready" ? "Source ready." : `Source ${source.processing_status}.`);
     await loadSources();
+    await loadSourcePreview(source.id);
     await refreshWorkspace();
   });
   qs("#askForm").addEventListener("submit", async (event) => {
@@ -153,5 +239,6 @@ function bindEvents() {
   });
 }
 
+setSourceMode(state.sourceMode);
 bindEvents();
 loadWorkspaces().catch((error) => toast(error.message));

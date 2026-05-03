@@ -32,9 +32,11 @@ defmodule PulseWeb.Router do
     get "/workspaces/:workspace_id/sources", SourceController, :index
     post "/workspaces/:workspace_id/sources", SourceController, :upload
     post "/workspaces/:workspace_id/sources/text", SourceController, :create_text
+    get "/workspaces/:workspace_id/sources/:id", SourceController, :show
+    patch "/workspaces/:workspace_id/sources/:id", SourceController, :update
+    patch "/workspaces/:workspace_id/sources/:id/text", SourceController, :update_text
+    delete "/workspaces/:workspace_id/sources/:id", SourceController, :delete
     get "/sources/:source_id/records", EvidenceController, :for_source
-    get "/sources/:id", SourceController, :show
-    delete "/sources/:id", SourceController, :delete
 
     post "/workspaces/:workspace_id/ask", AskController, :create
     post "/workspaces/:workspace_id/evidence", EvidenceController, :create
