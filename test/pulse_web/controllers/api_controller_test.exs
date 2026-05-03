@@ -112,4 +112,58 @@ defmodule PulseWeb.ApiControllerTest do
     assert updated_text["processing_status"] == "ready"
     assert updated_text["text_content"] =~ "named mitigation owner"
   end
+
+  test "decision log APIs support manual creation, extraction, and approval", %{conn: conn} do
+    conn = post(conn, ~p"/api/workspaces", %{name: "Decision API", root_path: "C:/tmp/dl-api"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Manual decision",
+        context: "User recorded this directly.",
+        decision_date: "2026-05-03",
+        owner: "Mira",
+        status: "active"
+      })
+
+    manual = json_response(conn, 200)
+    assert manual["record_state"] == "accepted"
+    assert manual["source_origin"] == "manual"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Decision Transcript",
+        source_type: "transcript",
+        origin: "manual_entry",
+        source_date: "2026-05-03",
+        text_content: "The team decided to launch with private beta. Owner is Mira."
+      })
+
+    source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions/extract", %{
+        source_id: source["id"]
+      })
+
+    [suggestion] = json_response(conn, 200)
+    assert suggestion["record_state"] == "suggested"
+    assert suggestion["source_origin"] == "extracted"
+    assert [%{"source_id" => source_id}] = suggestion["evidence"]
+    assert source_id == source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/decision_suggestions")
+    assert [%{"id" => suggestion_id}] = json_response(conn, 200)
+    assert suggestion_id == suggestion["id"]
+
+    conn = post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions/#{suggestion["id"]}/accept")
+    accepted = json_response(conn, 200)
+    assert accepted["record_state"] == "accepted"
+    assert [%{"source_id" => source_id}] = accepted["evidence"]
+    assert source_id == source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions")
+    accepted_decisions = json_response(conn, 200)
+    assert Enum.any?(accepted_decisions, &(&1["id"] == accepted["id"]))
+  end
 end

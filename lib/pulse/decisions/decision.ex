@@ -4,6 +4,7 @@ defmodule Pulse.Decisions.Decision do
   import Pulse.ChangesetHelpers
 
   @statuses ~w(active inactive)
+  @source_origins ~w(manual extracted)
 
   schema "decisions" do
     belongs_to :workspace, Pulse.Workspaces.Workspace
@@ -41,5 +42,6 @@ defmodule Pulse.Decisions.Decision do
     ])
     |> validate_inclusion(:status, @statuses)
     |> validate_record_state()
+    |> validate_inclusion(:source_origin, @source_origins)
   end
 end

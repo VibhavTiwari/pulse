@@ -67,8 +67,55 @@
 
           <h2>Decision Log</h2>
         </div>
+
+        <button id="extractDecisionsButton" class="secondary-button" type="button">
+          Extract from sources
+        </button>
       </div>
 
+      <form id="decisionForm" class="source-form">
+        <div class="form-grid">
+          <label>
+            <span>Title</span>
+            <input id="decisionTitle" type="text" placeholder="Private beta launch" required />
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="decisionDate" type="date" required />
+          </label>
+          <label>
+            <span>Owner</span>
+            <input id="decisionOwner" type="text" placeholder="Mira" required />
+          </label>
+        </div>
+        <label>
+          <span>Context</span>
+          <textarea id="decisionContext" placeholder="What was decided and why?" required></textarea>
+        </label>
+        <label>
+          <span>Status</span>
+          <select id="decisionStatus">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+        <button type="submit">Create decision</button>
+      </form>
+
+      <div class="section-header compact">
+        <div>
+          <p class="label">Approval inbox</p>
+          <h3>Suggested decisions</h3>
+        </div>
+      </div>
+      <div id="decisionInbox" class="table-list"></div>
+
+      <div class="section-header compact">
+        <div>
+          <p class="label">Accepted project truth</p>
+          <h3>Accepted decisions</h3>
+        </div>
+      </div>
       <div id="decisionList" class="table-list"></div>
     </section>
 
@@ -117,7 +164,6 @@
 
               <h2>Ask AI</h2>
             </div>
-
             <button id="newAskThread" class="secondary-button" type="button">New thread</button>
           </div>
 

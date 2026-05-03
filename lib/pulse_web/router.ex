@@ -44,6 +44,15 @@ defmodule PulseWeb.Router do
     get "/workspaces/:workspace_id/ask_threads/:thread_id", AskController, :show
     post "/workspaces/:workspace_id/ask_threads/:thread_id/messages", AskController, :continue
     post "/workspaces/:workspace_id/ask", AskController, :create
+    get "/workspaces/:workspace_id/decisions", DecisionController, :index
+    post "/workspaces/:workspace_id/decisions", DecisionController, :create
+    post "/workspaces/:workspace_id/decisions/extract", DecisionController, :extract
+    get "/workspaces/:workspace_id/decision_suggestions", DecisionController, :suggestions
+    get "/workspaces/:workspace_id/decisions/:id", DecisionController, :show
+    patch "/workspaces/:workspace_id/decisions/:id", DecisionController, :update
+    post "/workspaces/:workspace_id/decisions/:id/accept", DecisionController, :accept
+    post "/workspaces/:workspace_id/decisions/:id/reject", DecisionController, :reject
+    post "/workspaces/:workspace_id/decisions/:id/evidence", DecisionController, :attach_evidence
     post "/workspaces/:workspace_id/evidence", EvidenceController, :create
     get "/workspaces/:workspace_id/:collection", RecordController, :index
     post "/workspaces/:workspace_id/:collection", RecordController, :create

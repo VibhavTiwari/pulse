@@ -90,8 +90,7 @@ async function loadViewData() {
   }
 
   if (state.activeView === "decisions") {
-    const decisions = await api(`/api/workspaces/${workspaceId}/decisions`);
-    qs("#decisionList").innerHTML = decisions.length ? decisions.map((decision) => `<article class="row-card"><div><div class="source-meta"><span class="status">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(decision.record_state)}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p></div></article>`).join("") : empty("No accepted decisions have been logged yet.");
+    await loadDecisions();
   }
 
   if (state.activeView === "commitments") {
@@ -110,6 +109,63 @@ async function loadViewData() {
   }
 
   if (state.activeView === "sources") await loadSources();
+}
+
+async function loadDecisions() {
+  const workspaceId = state.workspace.id;
+  const [decisions, suggestions] = await Promise.all([
+    api(`/api/workspaces/${workspaceId}/decisions`),
+    api(`/api/workspaces/${workspaceId}/decision_suggestions`)
+  ]);
+  qs("#decisionList").innerHTML = decisions.length ? decisions.map(renderDecisionCard).join("") : empty("No accepted decisions yet. Create one manually or accept a suggested decision.");
+  qs("#decisionInbox").innerHTML = suggestions.length ? suggestions.map(renderDecisionSuggestion).join("") : empty("No suggested decisions are waiting for approval.");
+  bindDecisionActions();
+}
+
+function renderDecisionCard(decision) {
+  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(labelize(decision.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionEvidence(decision)}</div></article>`;
+}
+
+function renderDecisionSuggestion(decision) {
+  const incomplete = String(decision.owner || "").toLowerCase() === "unknown";
+  return `<article class="row-card"><div><div class="source-meta"><span class="status suggested">suggested</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span>${incomplete ? `<span class="status failed">Needs owner</span>` : ""}</div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionEvidence(decision)}</div><div class="source-actions"><button class="secondary-button" type="button" data-edit-decision="${escapeHtml(decision.id)}">Edit</button><button class="secondary-button" type="button" data-accept-decision="${escapeHtml(decision.id)}">Accept</button><button class="danger-button" type="button" data-reject-decision="${escapeHtml(decision.id)}">Reject</button></div></article>`;
+}
+
+function renderDecisionEvidence(decision) {
+  const evidence = decision.evidence || [];
+  if (!evidence.length) return `<p class="empty">Manual decision with no linked source evidence.</p>`;
+  return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} · ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
+}
+
+function bindDecisionActions() {
+  document.querySelectorAll("#decisionsView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("[data-accept-decision]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.acceptDecision}/accept`, {method: "POST"});
+    toast("Decision accepted.");
+    await loadDecisions();
+    await refreshWorkspace();
+  }));
+  document.querySelectorAll("[data-reject-decision]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.rejectDecision}/reject`, {method: "POST"});
+    toast("Decision suggestion rejected.");
+    await loadDecisions();
+  }));
+  document.querySelectorAll("[data-edit-decision]").forEach((button) => button.addEventListener("click", async () => {
+    const title = window.prompt("Decision title");
+    if (title === null) return;
+    const owner = window.prompt("Owner");
+    if (owner === null) return;
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.editDecision}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({title: title.trim(), owner: owner.trim()})
+    });
+    toast("Decision suggestion updated.");
+    await loadDecisions();
+  }));
 }
 
 function renderAnswer(answer) {
@@ -201,6 +257,32 @@ function bindEvents() {
     const workspace = await api("/api/workspaces", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: qs("#workspaceInput").value.trim()})});
     setWorkspace(workspace);
     await loadViewData();
+  });
+  qs("#decisionForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const decision = await api(`/api/workspaces/${state.workspace.id}/decisions`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: qs("#decisionTitle").value.trim(),
+        context: qs("#decisionContext").value.trim(),
+        decision_date: qs("#decisionDate").value,
+        owner: qs("#decisionOwner").value.trim(),
+        status: qs("#decisionStatus").value
+      })
+    });
+    qs("#decisionTitle").value = "";
+    qs("#decisionContext").value = "";
+    qs("#decisionDate").value = "";
+    qs("#decisionOwner").value = "";
+    toast(`Decision created: ${decision.title}`);
+    await loadDecisions();
+    await refreshWorkspace();
+  });
+  qs("#extractDecisionsButton").addEventListener("click", async () => {
+    const suggestions = await api(`/api/workspaces/${state.workspace.id}/decisions/extract`, {method: "POST"});
+    toast(suggestions.length ? `${suggestions.length} decision suggestion${suggestions.length === 1 ? "" : "s"} found.` : "No clear decisions found in ready sources.");
+    await loadDecisions();
   });
   qs("#sourceForm").addEventListener("submit", async (event) => {
     event.preventDefault();

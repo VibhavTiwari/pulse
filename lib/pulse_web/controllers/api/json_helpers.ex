@@ -132,6 +132,24 @@ defmodule PulseWeb.Api.JSONHelpers do
     |> maybe_put_assoc(record, type, :meetings)
   end
 
+  def decision(decision) do
+    %{
+      id: decision.id,
+      workspace_id: decision.workspace_id,
+      title: decision.title,
+      context: decision.context,
+      decision_date: decision.decision_date,
+      owner: decision.owner,
+      status: decision.status,
+      record_state: decision.record_state,
+      source_origin: decision.source_origin,
+      evidence_count: evidence_count(decision),
+      evidence: decision_evidence(decision),
+      created_at: decision.inserted_at,
+      updated_at: decision.updated_at
+    }
+  end
+
   def evidence(reference) do
     %{
       id: reference.id,
@@ -146,6 +164,16 @@ defmodule PulseWeb.Api.JSONHelpers do
       created_at: reference.inserted_at
     }
   end
+
+  defp decision_evidence(decision) do
+    if Map.has_key?(decision, :evidence) and is_list(decision.evidence) do
+      Enum.map(decision.evidence, &evidence/1)
+    else
+      []
+    end
+  end
+
+  defp evidence_count(decision), do: length(decision_evidence(decision))
 
   def errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
