@@ -200,8 +200,7 @@
 
             <option value="inactive">Inactive</option>
           </select>
-        </label>
-        <button type="submit">Create decision</button>
+        </label> <button type="submit">Create decision</button>
       </form>
 
       <div class="section-header compact">
@@ -279,8 +278,7 @@
             id="commitmentDescription"
             placeholder="Additional detail or context"
           ></textarea>
-        </label>
-        <button type="submit">Create commitment</button>
+        </label> <button type="submit">Create commitment</button>
       </form>
 
       <div class="source-toolbar">
@@ -377,8 +375,7 @@
             placeholder="What is the risk or blocker?"
             required
           ></textarea>
-        </label>
-        <button type="submit">Create risk</button>
+        </label> <button type="submit">Create risk</button>
       </form>
 
       <div class="source-toolbar">
@@ -458,8 +455,7 @@
             id="meetingDescription"
             placeholder="What should Pulse use to find relevant decisions and open commitments?"
           ></textarea>
-        </label>
-        <button type="submit">Create meeting</button>
+        </label> <button type="submit">Create meeting</button>
       </form>
 
       <div class="meeting-layout">
@@ -488,7 +484,7 @@
 
               <h2>Ask AI</h2>
             </div>
-            <button id="newAskThread" class="secondary-button" type="button">New thread</button>
+             <button id="newAskThread" class="secondary-button" type="button">New thread</button>
           </div>
 
           <form id="askForm" class="ask-form">
@@ -580,8 +576,7 @@
             </label>
             <label id="manualUploadPanel" class="hidden">
               <span>File</span> <input id="sourceFile" type="file" accept=".txt,.md" />
-            </label>
-            <button id="sourceSubmit" type="submit">Add source</button>
+            </label> <button id="sourceSubmit" type="submit">Add source</button>
           </form>
 
           <div class="source-toolbar">
@@ -609,9 +604,48 @@
 
               <option value="other">Other</option>
             </select>
+            <select
+              id="sourceClassificationFilter"
+              aria-label="Filter by P1 source classification"
+            >
+              <option value="">All classifications</option>
+
+              <option value="meeting">Meeting</option>
+
+              <option value="document">Document</option>
+
+              <option value="update">Update</option>
+
+              <option value="transcript">Transcript</option>
+
+              <option value="plan">Plan</option>
+            </select>
+            <select id="sourceQualityFilter" aria-label="Filter by source quality">
+              <option value="">All quality labels</option>
+
+              <option value="strong">Strong</option>
+
+              <option value="usable">Usable</option>
+
+              <option value="weak">Weak</option>
+
+              <option value="poor">Poor</option>
+
+              <option value="unknown">Unknown</option>
+            </select>
           </div>
 
           <div id="sourceList" class="source-list"></div>
+
+          <div class="section-header compact">
+            <div>
+              <p class="label">Chronology</p>
+
+              <h3>Source Timeline</h3>
+            </div>
+          </div>
+
+          <div id="sourceTimeline" class="timeline-list"></div>
         </div>
 
         <aside id="sourcePreview" class="source-preview">

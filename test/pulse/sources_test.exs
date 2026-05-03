@@ -128,6 +128,164 @@ defmodule Pulse.SourcesTest do
     assert [%{text: "Updated text for Pulse."}] = source.chunks
   end
 
+  test "sources are automatically classified and manual classification is preserved", %{
+    workspace: workspace
+  } do
+    {:ok, source} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Launch Roadmap Plan",
+        "source_type" => "note",
+        "origin" => "manual_entry",
+        "text_content" => "Plan: launch milestones, timeline, owners, and sequencing."
+      })
+
+    assert source.classified_source_type == "plan"
+    assert source.classification_confidence == "high"
+    assert source.classification_method == "text_based"
+
+    {:ok, source} =
+      Sources.update_source_classification(source, %{"classified_source_type" => "document"})
+
+    assert source.classified_source_type == "document"
+    assert source.classification_confidence == "manual"
+    assert source.classification_method == "manual"
+
+    {:ok, source} =
+      Sources.update_source_text(source, "Transcript: Mira said the project update is ready.")
+
+    assert source.classified_source_type == "document"
+    assert source.classification_method == "manual"
+  end
+
+  test "timeline orders by source date and uses created date fallback", %{workspace: workspace} do
+    {:ok, older} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Older Update",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "source_date" => "2026-04-01",
+        "text_content" => "Project update with enough source text to be useful."
+      })
+
+    {:ok, newer} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Newer Update",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "source_date" => "2026-05-01",
+        "text_content" => "Project update with enough source text to be useful."
+      })
+
+    {:ok, fallback} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "No Source Date",
+        "source_type" => "document",
+        "origin" => "manual_entry",
+        "text_content" => "Document with no source date but enough content for timeline fallback."
+      })
+
+    timeline = Sources.list_timeline(workspace.id)
+
+    assert Enum.map(timeline, & &1.source.id) |> Enum.take(2) == [fallback.id, newer.id]
+
+    assert Enum.find(timeline, &(&1.source.id == older.id)).timeline_date_basis == "source_date"
+    assert Enum.find(timeline, &(&1.source.id == fallback.id)).timeline_date_basis == "created_at"
+  end
+
+  test "duplicate detection is workspace scoped and duplicate flags can be resolved", %{
+    workspace: workspace
+  } do
+    text = "Launch update: Mira will keep the beta scoped until support readiness is clear."
+
+    {:ok, original} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Launch Update",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" => text
+      })
+
+    {:ok, duplicate} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Launch Update Copy",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" => text
+      })
+
+    {:ok, other_workspace} =
+      Workspaces.create_workspace(%{
+        "name" => "Duplicate Other",
+        "root_path" => "C:/tmp/dup-other"
+      })
+
+    {:ok, _other_duplicate} =
+      Sources.create_text_source(other_workspace.id, %{
+        "title" => "Launch Update Copy",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" => text
+      })
+
+    assert [%{duplicate_type: "exact_duplicate", matched_source_id: matched_source_id} = flag] =
+             Sources.list_duplicate_flags(workspace.id)
+
+    assert matched_source_id == original.id
+    assert flag.source_id == duplicate.id
+    assert Sources.list_duplicate_flags(other_workspace.id) == []
+
+    {:ok, confirmed} =
+      Sources.resolve_duplicate_flag(workspace.id, flag.id, "confirmed_duplicate")
+
+    assert confirmed.resolution_state == "confirmed_duplicate"
+
+    assert Sources.list_duplicate_flags(workspace.id, %{"resolution_state" => "unresolved"}) == []
+  end
+
+  test "quality labels mark thin stale unclear pending and failed sources", %{
+    workspace: workspace
+  } do
+    {:ok, thin} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Thin",
+        "source_type" => "note",
+        "origin" => "manual_entry",
+        "text_content" => "Short note."
+      })
+
+    assert thin.quality_label == "weak"
+    assert "thin" in thin.quality_reasons
+
+    {:ok, stale} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Stale Project Update",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "source_date" => "2025-01-01",
+        "text_content" =>
+          "This project update has enough useful content but the source date is old."
+      })
+
+    assert "stale" in stale.quality_reasons
+
+    {:ok, unclear} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Unclear Notes",
+        "source_type" => "note",
+        "origin" => "manual_entry",
+        "text_content" => "??? unclear [inaudible]"
+      })
+
+    assert unclear.quality_label == "poor"
+    assert "unclear" in unclear.quality_reasons
+
+    upload = upload_fixture("deck.pdf", "%PDF binary-ish")
+    {:ok, failed} = Sources.create_uploaded_source(workspace.id, upload, %{"title" => "Failed"})
+
+    assert failed.quality_label == "poor"
+    assert "unclear" in failed.quality_reasons
+  end
+
   defp upload_fixture(filename, body) do
     path = Path.join(System.tmp_dir!(), "#{Ecto.UUID.generate()}-#{filename}")
     File.write!(path, body)

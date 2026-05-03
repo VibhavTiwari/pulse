@@ -680,11 +680,44 @@ function renderAnswer(answer) {
 async function loadSources() {
   const query = queryString({
     processing_status: qs("#sourceStatusFilter")?.value,
-    source_type: qs("#sourceTypeFilter")?.value
+    source_type: qs("#sourceTypeFilter")?.value,
+    classified_source_type: qs("#sourceClassificationFilter")?.value,
+    quality_label: qs("#sourceQualityFilter")?.value
   });
   const sources = await api(`/api/workspaces/${state.workspace.id}/sources${query}`);
-  qs("#sourceList").innerHTML = sources.length ? sources.map((source) => `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span><span class="stat-pill">${escapeHtml(labelize(source.origin))}</span>${source.source_date ? `<span class="stat-pill">${escapeHtml(formatDate(source.source_date))}</span>` : ""}</div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || "Manual source")} - Updated ${escapeHtml(formatDate(source.updated_at))}</p></button><button class="danger-button" type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`).join("") : empty("Source Library is where project evidence starts. Add pasted text or upload a readable .txt/.md file.");
-  document.querySelectorAll("[data-source-id]").forEach((button) => button.addEventListener("click", () => loadSourcePreview(button.dataset.sourceId)));
+  qs("#sourceList").innerHTML = sources.length ? sources.map(renderSourceCard).join("") : empty("Source Library is where project evidence starts. Add pasted text or upload a readable .txt/.md file.");
+  await loadSourceTimeline();
+  bindSourceActions();
+}
+
+async function loadSourceTimeline() {
+  const query = queryString({
+    classified_source_type: qs("#sourceClassificationFilter")?.value,
+    quality_label: qs("#sourceQualityFilter")?.value
+  });
+  const items = await api(`/api/workspaces/${state.workspace.id}/sources/timeline${query}`);
+  qs("#sourceTimeline").innerHTML = items.length ? items.map(renderSourceTimelineItem).join("") : empty("Source timeline appears after sources are added. Sources without a source date use their added date.");
+}
+
+function renderSourceCard(source) {
+  return `<article class="row-card"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span>${renderSourceSignals(source)}<span class="stat-pill">${escapeHtml(labelize(source.origin))}</span>${source.source_date ? `<span class="stat-pill">${escapeHtml(formatDate(source.source_date))}</span>` : ""}</div><h3>${escapeHtml(source.title)}</h3><p>${escapeHtml(source.original_filename || "Manual source")} - Updated ${escapeHtml(formatDate(source.updated_at))}</p></button><button class="danger-button" type="button" data-delete-source="${escapeHtml(source.id)}">Delete</button></article>`;
+}
+
+function renderSourceTimelineItem(item) {
+  const source = item.source;
+  return `<article class="timeline-item"><button type="button" data-source-id="${escapeHtml(source.id)}"><div class="source-meta"><span class="stat-pill">${escapeHtml(formatDate(item.timeline_date))}</span><span class="stat-pill">${escapeHtml(labelize(item.timeline_date_basis))}</span><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span>${renderSourceSignals(source)}</div><h3>${escapeHtml(source.title)}</h3><p>${item.timeline_date_basis === "created_at" ? "Placed by added date because no source date is set." : "Placed by source date."}</p></button></article>`;
+}
+
+function renderSourceSignals(source) {
+  const classification = source.classified_source_type || "unclassified";
+  const confidence = source.classification_confidence || "low";
+  const quality = source.quality_label || "unknown";
+  const duplicate = source.duplicate_count ? `<span class="status failed">${source.duplicate_count} duplicate flag${source.duplicate_count === 1 ? "" : "s"}</span>` : "";
+  return `<span class="stat-pill">${escapeHtml(labelize(classification))} - ${escapeHtml(confidence)}</span><span class="status ${escapeHtml(quality)}">${escapeHtml(quality)} quality</span>${duplicate}`;
+}
+
+function bindSourceActions() {
+  document.querySelectorAll("#sourcesView [data-source-id]").forEach((button) => button.addEventListener("click", () => loadSourcePreview(button.dataset.sourceId)));
   document.querySelectorAll("[data-delete-source]").forEach((button) => button.addEventListener("click", async () => {
     await api(`/api/workspaces/${state.workspace.id}/sources/${button.dataset.deleteSource}`, {method: "DELETE"});
     toast("Source removed from active search.");
@@ -700,7 +733,18 @@ async function loadSourcePreview(sourceId) {
   const textPanel = textReady
     ? `<div class="source-text">${escapeHtml(source.text_content)}</div>`
     : `<p class="empty">${source.processing_status === "failed" ? escapeHtml(source.error_message || "Pulse could not extract readable text from this source.") : "This source is pending readable text extraction."}</p>`;
-  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span></div><div class="source-detail-grid"><div class="source-detail"><p class="label">Origin</p><p>${escapeHtml(labelize(source.origin))}</p></div><div class="source-detail"><p class="label">Source date</p><p>${escapeHtml(formatDate(source.source_date) || "Unknown")}</p></div><div class="source-detail"><p class="label">Created</p><p>${escapeHtml(formatDate(source.created_at))}</p></div><div class="source-detail"><p class="label">Updated</p><p>${escapeHtml(formatDate(source.updated_at))}</p></div></div><form id="metadataForm" class="metadata-form"><div class="form-grid"><label><span>Title</span><input id="metadataTitle" type="text" value="${escapeHtml(source.title)}" required /></label><label><span>Type</span><select id="metadataType" required>${["note","document","transcript","meeting_note","project_update","other"].map((type) => `<option value="${type}" ${source.source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><label><span>Source date</span><input id="metadataDate" type="date" value="${escapeHtml(source.source_date || "")}" /></label></div><button type="submit">Save metadata</button></form><div class="source-actions">${source.origin === "manual_entry" ? `<button id="editTextButton" class="secondary-button" type="button">Edit text</button>` : ""}</div><h4>Readable text Pulse has stored</h4><div id="sourceTextPanel">${textPanel}</div>`;
+  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span>${renderSourceSignals(source)}</div><div class="source-detail-grid"><div class="source-detail"><p class="label">Origin</p><p>${escapeHtml(labelize(source.origin))}</p></div><div class="source-detail"><p class="label">Source date</p><p>${escapeHtml(formatDate(source.source_date) || "Unknown")}</p></div><div class="source-detail"><p class="label">Timeline basis</p><p>${source.source_date ? "Source date" : "Added date fallback"}</p></div><div class="source-detail"><p class="label">Updated</p><p>${escapeHtml(formatDate(source.updated_at))}</p></div></div>${renderSourceQuality(source)}${renderDuplicateFlags(source)}<form id="classificationForm" class="metadata-form"><label><span>P1 classification</span><select id="classificationType">${["meeting","document","update","transcript","plan"].map((type) => `<option value="${type}" ${source.classified_source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><button type="submit">Save classification</button></form><form id="metadataForm" class="metadata-form"><div class="form-grid"><label><span>Title</span><input id="metadataTitle" type="text" value="${escapeHtml(source.title)}" required /></label><label><span>Type</span><select id="metadataType" required>${["note","document","transcript","meeting_note","project_update","other"].map((type) => `<option value="${type}" ${source.source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><label><span>Source date</span><input id="metadataDate" type="date" value="${escapeHtml(source.source_date || "")}" /></label></div><button type="submit">Save metadata</button></form><div class="source-actions"><button id="detectDuplicatesButton" class="secondary-button" type="button">Check duplicates</button><button id="reassessQualityButton" class="secondary-button" type="button">Reassess quality</button>${source.origin === "manual_entry" ? `<button id="editTextButton" class="secondary-button" type="button">Edit text</button>` : ""}</div><h4>Readable text Pulse has stored</h4><div id="sourceTextPanel">${textPanel}</div>`;
+  qs("#classificationForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}/classification`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({classified_source_type: qs("#classificationType").value})
+    });
+    toast("Classification saved.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  });
   qs("#metadataForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}`, {
@@ -716,7 +760,45 @@ async function loadSourcePreview(sourceId) {
     await loadSources();
     await loadSourcePreview(source.id);
   });
+  qs("#detectDuplicatesButton").addEventListener("click", async () => {
+    const flags = await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}/detect_duplicates`, {method: "POST"});
+    toast(flags.length ? `${flags.length} duplicate flag${flags.length === 1 ? "" : "s"} found.` : "No duplicate flags found.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  });
+  qs("#reassessQualityButton").addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}/reassess_quality`, {method: "POST"});
+    toast("Quality reassessed.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  });
+  document.querySelectorAll("[data-confirm-duplicate]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/source_duplicate_flags/${button.dataset.confirmDuplicate}/confirm`, {method: "POST"});
+    toast("Duplicate confirmed.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  }));
+  document.querySelectorAll("[data-dismiss-duplicate]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/source_duplicate_flags/${button.dataset.dismissDuplicate}/dismiss`, {method: "POST"});
+    toast("Duplicate dismissed.");
+    await loadSources();
+    await loadSourcePreview(source.id);
+  }));
+  document.querySelectorAll("[data-matched-source-id]").forEach((button) => button.addEventListener("click", () => loadSourcePreview(button.dataset.matchedSourceId)));
   qs("#editTextButton")?.addEventListener("click", () => renderTextEditor(source));
+}
+
+function renderSourceQuality(source) {
+  const reasons = source.quality_reasons || [];
+  const explanation = reasons.length ? reasons.map(labelize).join(", ") : "No weak quality reasons recorded.";
+  return `<section class="source-signal-panel"><p class="label">Quality signal</p><div class="source-meta"><span class="status ${escapeHtml(source.quality_label || "unknown")}">${escapeHtml(source.quality_label || "unknown")}</span><span class="stat-pill">${escapeHtml(explanation)}</span></div></section>`;
+}
+
+function renderDuplicateFlags(source) {
+  const flags = source.duplicate_flags || [];
+  if (!flags.length) return `<section class="source-signal-panel"><p class="label">Duplicate flags</p><p class="empty">No unresolved duplicate warnings.</p></section>`;
+
+  return `<section class="source-signal-panel"><p class="label">Duplicate flags</p><div class="brief-items">${flags.map((flag) => `<article class="brief-item"><div class="source-meta"><span class="status failed">${escapeHtml(labelize(flag.duplicate_type))}</span><span class="stat-pill">${escapeHtml(flag.confidence)} confidence</span></div><h5>${escapeHtml(flag.matched_source_title || "Matched source")}</h5><p>${escapeHtml(flag.reason)}</p><div class="source-actions"><button class="secondary-button" type="button" data-matched-source-id="${escapeHtml(flag.matched_source_id)}">Open matched source</button><button class="secondary-button" type="button" data-confirm-duplicate="${escapeHtml(flag.id)}">Confirm duplicate</button><button class="danger-button" type="button" data-dismiss-duplicate="${escapeHtml(flag.id)}">Dismiss</button></div></article>`).join("")}</div></section>`;
 }
 
 function renderTextEditor(source) {
@@ -762,6 +844,8 @@ function bindEvents() {
   });
   qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
+  qs("#sourceClassificationFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
+  qs("#sourceQualityFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#commitmentStatusFilter").addEventListener("change", () => loadCommitments().catch((error) => toast(error.message)));
   qs("#riskSeverityFilter").addEventListener("change", () => loadRisks().catch((error) => toast(error.message)));
   qs("#riskStatusFilter").addEventListener("change", () => loadRisks().catch((error) => toast(error.message)));

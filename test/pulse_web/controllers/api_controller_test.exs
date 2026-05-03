@@ -113,6 +113,76 @@ defmodule PulseWeb.ApiControllerTest do
     assert updated_text["text_content"] =~ "named mitigation owner"
   end
 
+  test "P1 source library APIs expose classification timeline duplicate and quality signals", %{
+    conn: conn
+  } do
+    conn = post(conn, ~p"/api/workspaces", %{name: "P1 Source API", root_path: "C:/tmp/p1-src"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Launch Roadmap Plan",
+        source_type: "note",
+        origin: "manual_entry",
+        source_date: "2026-05-01",
+        text_content:
+          "Plan: launch milestones, owner sequence, beta timeline, support readiness, and rollout strategy."
+      })
+
+    plan = json_response(conn, 200)
+    assert plan["classified_source_type"] == "plan"
+    assert plan["classification_confidence"] == "high"
+    assert plan["quality_label"] in ["usable", "strong"]
+
+    conn =
+      patch(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/#{plan["id"]}/classification", %{
+        classified_source_type: "document"
+      })
+
+    manual = json_response(conn, 200)
+    assert manual["classified_source_type"] == "document"
+    assert manual["classification_confidence"] == "manual"
+    assert manual["classification_method"] == "manual"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Launch Roadmap Plan Copy",
+        source_type: "note",
+        origin: "manual_entry",
+        text_content:
+          "Plan: launch milestones, owner sequence, beta timeline, support readiness, and rollout strategy."
+      })
+
+    copy = json_response(conn, 200)
+    assert copy["duplicate_count"] == 1
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/timeline")
+    timeline = json_response(conn, 200)
+
+    assert [%{"timeline_date_basis" => "created_at"}, %{"timeline_date_basis" => "source_date"}] =
+             timeline
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/duplicates")
+
+    assert [%{"duplicate_type" => "exact_duplicate", "resolution_state" => "unresolved"} = flag] =
+             json_response(conn, 200)
+
+    conn =
+      post(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/source_duplicate_flags/#{flag["id"]}/dismiss"
+      )
+
+    dismissed = json_response(conn, 200)
+    assert dismissed["resolution_state"] == "dismissed"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/#{copy["id"]}/reassess_quality")
+
+    reassessed = json_response(conn, 200)
+    assert reassessed["quality_label"] in ["usable", "strong"]
+  end
+
   test "decision log APIs support manual creation, extraction, and approval", %{conn: conn} do
     conn = post(conn, ~p"/api/workspaces", %{name: "Decision API", root_path: "C:/tmp/dl-api"})
     workspace = json_response(conn, 200)

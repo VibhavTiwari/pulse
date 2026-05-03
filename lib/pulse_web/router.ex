@@ -30,11 +30,34 @@ defmodule PulseWeb.Router do
     get "/workspaces/:id", WorkspaceController, :show
 
     get "/workspaces/:workspace_id/sources", SourceController, :index
+    get "/workspaces/:workspace_id/sources/timeline", SourceController, :timeline
+    get "/workspaces/:workspace_id/sources/duplicates", SourceController, :duplicate_flags
     post "/workspaces/:workspace_id/sources", SourceController, :upload
     post "/workspaces/:workspace_id/sources/text", SourceController, :create_text
     get "/workspaces/:workspace_id/sources/:id", SourceController, :show
     patch "/workspaces/:workspace_id/sources/:id", SourceController, :update
     patch "/workspaces/:workspace_id/sources/:id/text", SourceController, :update_text
+
+    patch "/workspaces/:workspace_id/sources/:id/classification",
+          SourceController,
+          :update_classification
+
+    post "/workspaces/:workspace_id/sources/:id/detect_duplicates",
+         SourceController,
+         :detect_duplicates
+
+    post "/workspaces/:workspace_id/sources/:id/reassess_quality",
+         SourceController,
+         :reassess_quality
+
+    post "/workspaces/:workspace_id/source_duplicate_flags/:flag_id/confirm",
+         SourceController,
+         :confirm_duplicate
+
+    post "/workspaces/:workspace_id/source_duplicate_flags/:flag_id/dismiss",
+         SourceController,
+         :dismiss_duplicate
+
     delete "/workspaces/:workspace_id/sources/:id", SourceController, :delete
     get "/sources/:source_id/records", EvidenceController, :for_source
 

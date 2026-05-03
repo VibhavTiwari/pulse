@@ -26,6 +26,14 @@ defmodule PulseWeb.Api.JSONHelpers do
       mime_type: source.mime_type,
       content_hash: source.content_hash,
       error_message: source.error_message,
+      classified_source_type: source.classified_source_type,
+      classification_confidence: source.classification_confidence,
+      classification_method: source.classification_method,
+      quality_label: source.quality_label,
+      quality_reasons: source.quality_reasons || [],
+      quality_assessed_at: source.quality_assessed_at,
+      duplicate_count: duplicate_count(source),
+      duplicate_flags: duplicate_flags(source),
       created_at: source.inserted_at,
       updated_at: source.updated_at
     }
@@ -35,6 +43,33 @@ defmodule PulseWeb.Api.JSONHelpers do
     else
       base
     end
+  end
+
+  def source_timeline_item(item) do
+    %{
+      source: source(item.source),
+      timeline_date: item.timeline_date,
+      timeline_date_basis: item.timeline_date_basis,
+      duplicate_count: item.duplicate_count
+    }
+  end
+
+  def source_duplicate_flag(flag) do
+    %{
+      id: flag.id,
+      workspace_id: flag.workspace_id,
+      source_id: flag.source_id,
+      source_title: if(Ecto.assoc_loaded?(flag.source), do: flag.source.title, else: nil),
+      matched_source_id: flag.matched_source_id,
+      matched_source_title:
+        if(Ecto.assoc_loaded?(flag.matched_source), do: flag.matched_source.title, else: nil),
+      duplicate_type: flag.duplicate_type,
+      confidence: flag.confidence,
+      reason: flag.reason,
+      resolution_state: flag.resolution_state,
+      created_at: flag.inserted_at,
+      updated_at: flag.updated_at
+    }
   end
 
   def chunk(chunk) do
@@ -281,6 +316,18 @@ defmodule PulseWeb.Api.JSONHelpers do
   end
 
   defp evidence_count(decision), do: length(decision_evidence(decision))
+
+  defp duplicate_flags(source) do
+    if Ecto.assoc_loaded?(source.duplicate_flags) do
+      source.duplicate_flags
+      |> Enum.filter(&(&1.resolution_state == "unresolved"))
+      |> Enum.map(&source_duplicate_flag/1)
+    else
+      []
+    end
+  end
+
+  defp duplicate_count(source), do: length(duplicate_flags(source))
 
   defp review_record("decision", record), do: decision(record)
   defp review_record("commitment", record), do: commitment(record)
