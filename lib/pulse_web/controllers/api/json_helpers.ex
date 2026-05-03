@@ -169,6 +169,37 @@ defmodule PulseWeb.Api.JSONHelpers do
     }
   end
 
+  def risk(risk) do
+    %{
+      id: risk.id,
+      workspace_id: risk.workspace_id,
+      title: risk.title,
+      description: risk.description,
+      severity: risk.severity,
+      owner: risk.owner,
+      status: risk.status,
+      mitigation: risk.mitigation,
+      record_state: risk.record_state,
+      source_origin: risk.source_origin,
+      evidence_count: evidence_count(risk),
+      evidence: decision_evidence(risk),
+      created_at: risk.inserted_at,
+      updated_at: risk.updated_at
+    }
+  end
+
+  def review_item(item) do
+    %{
+      type: item.type,
+      id: item.id,
+      incomplete: item.incomplete,
+      evidence_count: Map.get(item, :evidence_count) || evidence_count(item.record),
+      record: review_record(item.type, item.record),
+      created_at: item.record.inserted_at,
+      updated_at: item.record.updated_at
+    }
+  end
+
   def meeting(meeting) do
     base = %{
       id: meeting.id,
@@ -235,6 +266,10 @@ defmodule PulseWeb.Api.JSONHelpers do
   end
 
   defp evidence_count(decision), do: length(decision_evidence(decision))
+
+  defp review_record("decision", record), do: decision(record)
+  defp review_record("commitment", record), do: commitment(record)
+  defp review_record("risk", record), do: risk(record)
 
   defp brief_item_count(brief, section) do
     brief.sections

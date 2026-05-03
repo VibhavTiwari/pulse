@@ -5,6 +5,7 @@ defmodule Pulse.Risks.Risk do
 
   @severities ~w(low medium high critical)
   @statuses ~w(open mitigated resolved)
+  @source_origins ~w(manual extracted)
 
   schema "risks" do
     belongs_to :workspace, Pulse.Workspaces.Workspace
@@ -45,5 +46,6 @@ defmodule Pulse.Risks.Risk do
     |> validate_inclusion(:severity, @severities)
     |> validate_inclusion(:status, @statuses)
     |> validate_record_state()
+    |> validate_inclusion(:source_origin, @source_origins)
   end
 end

@@ -67,6 +67,29 @@ defmodule PulseWeb.Router do
          CommitmentController,
          :attach_evidence
 
+    get "/workspaces/:workspace_id/risks", RiskController, :index
+    post "/workspaces/:workspace_id/risks", RiskController, :create
+    post "/workspaces/:workspace_id/risks/extract", RiskController, :extract
+    get "/workspaces/:workspace_id/risk_suggestions", RiskController, :suggestions
+    get "/workspaces/:workspace_id/risks/:id", RiskController, :show
+    patch "/workspaces/:workspace_id/risks/:id", RiskController, :update
+    patch "/workspaces/:workspace_id/risks/:id/status", RiskController, :update_status
+    post "/workspaces/:workspace_id/risks/:id/accept", RiskController, :accept
+    post "/workspaces/:workspace_id/risks/:id/reject", RiskController, :reject
+    post "/workspaces/:workspace_id/risks/:id/evidence", RiskController, :attach_evidence
+
+    get "/workspaces/:workspace_id/review_inbox", ReviewInboxController, :index
+    get "/workspaces/:workspace_id/review_inbox/:type/:id", ReviewInboxController, :show
+    patch "/workspaces/:workspace_id/review_inbox/:type/:id", ReviewInboxController, :update
+
+    post "/workspaces/:workspace_id/review_inbox/:type/:id/accept",
+         ReviewInboxController,
+         :accept
+
+    post "/workspaces/:workspace_id/review_inbox/:type/:id/reject",
+         ReviewInboxController,
+         :reject
+
     get "/workspaces/:workspace_id/briefs", BriefController, :index
     get "/workspaces/:workspace_id/briefs/latest", BriefController, :latest
     post "/workspaces/:workspace_id/briefs/daily", BriefController, :generate

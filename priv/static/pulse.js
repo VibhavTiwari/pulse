@@ -1,5 +1,5 @@
 const state = {workspace: null, activeView: "brief", sourceMode: "manual_entry", selectedSourceId: null, askThreadId: null};
-const views = {brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
+const views = {brief: "briefView", decisions: "decisionsView", commitments: "commitmentsView", risks: "risksView", review: "reviewView", meetings: "meetingsView", ask: "askView", sources: "sourcesView"};
 
 const qs = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -97,8 +97,11 @@ async function loadViewData() {
   }
 
   if (state.activeView === "risks") {
-    const risks = await api(`/api/workspaces/${workspaceId}/risks`);
-    qs("#riskList").innerHTML = risks.length ? risks.map((risk) => `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span><span class="stat-pill">${escapeHtml(risk.severity)}</span></div><h3>${escapeHtml(risk.title)}</h3><p>${escapeHtml(risk.description)}</p>${risk.mitigation ? `<p><strong>Mitigation:</strong> ${escapeHtml(risk.mitigation)}</p>` : ""}</div></article>`).join("") : empty("No accepted risks have been captured yet.");
+    await loadRisks();
+  }
+
+  if (state.activeView === "review") {
+    await loadReviewInbox();
   }
 
   if (state.activeView === "meetings") {
@@ -282,6 +285,97 @@ function bindCommitmentActions() {
   }));
 }
 
+async function loadRisks() {
+  const workspaceId = state.workspace.id;
+  const query = queryString({
+    severity: qs("#riskSeverityFilter")?.value,
+    status: qs("#riskStatusFilter")?.value
+  });
+  const risks = await api(`/api/workspaces/${workspaceId}/risks${query}`);
+  qs("#riskList").innerHTML = risks.length ? risks.map(renderRiskCard).join("") : empty("No accepted risks have been captured yet. Create one manually or extract risk suggestions from ready sources.");
+  bindRiskActions();
+}
+
+function renderRiskCard(risk) {
+  return `<article class="row-card"><div><div class="source-meta"><span class="status ${escapeHtml(risk.status)}">${escapeHtml(risk.status)}</span><span class="stat-pill">${escapeHtml(risk.severity)}</span><span class="stat-pill">${escapeHtml(labelize(risk.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(risk.evidence_count ? `${risk.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(risk.title)}</h3><p>${escapeHtml(risk.description)}</p><p><strong>Owner:</strong> ${escapeHtml(risk.owner)}</p>${risk.mitigation ? `<p><strong>Mitigation:</strong> ${escapeHtml(risk.mitigation)}</p>` : ""}${renderRecordEvidence(risk)}</div><div class="source-actions"><select data-risk-status="${escapeHtml(risk.id)}" aria-label="Update risk status"><option value="open" ${risk.status === "open" ? "selected" : ""}>Open</option><option value="mitigated" ${risk.status === "mitigated" ? "selected" : ""}>Mitigated</option><option value="resolved" ${risk.status === "resolved" ? "selected" : ""}>Resolved</option></select></div></article>`;
+}
+
+function bindRiskActions() {
+  document.querySelectorAll("#risksView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("[data-risk-status]").forEach((select) => select.addEventListener("change", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/risks/${select.dataset.riskStatus}/status`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({status: select.value})
+    });
+    toast("Risk status updated.");
+    await loadRisks();
+  }));
+}
+
+async function loadReviewInbox() {
+  const type = qs("#reviewTypeFilter")?.value;
+  const query = queryString({type});
+  const items = await api(`/api/workspaces/${state.workspace.id}/review_inbox${query}`);
+  qs("#reviewInboxList").innerHTML = items.length ? items.map(renderReviewItem).join("") : empty("No suggestions are waiting for review.");
+  bindReviewActions();
+}
+
+function renderReviewItem(item) {
+  const record = item.record;
+  return `<article class="row-card"><div><div class="source-meta"><span class="status suggested">suggested ${escapeHtml(item.type)}</span>${item.incomplete ? `<span class="status failed">Needs edit</span>` : ""}<span class="stat-pill">${escapeHtml(item.evidence_count ? `${item.evidence_count} evidence` : "No evidence")}</span>${record.severity ? `<span class="stat-pill">${escapeHtml(record.severity)}</span>` : ""}${record.status ? `<span class="status ${escapeHtml(record.status)}">${escapeHtml(record.status)}</span>` : ""}</div><h3>${escapeHtml(record.title)}</h3><p>${escapeHtml(record.context || record.description || "")}</p><p><strong>Owner:</strong> ${escapeHtml(record.owner || "Unknown")}</p>${renderRecordEvidence(record)}</div><div class="source-actions"><button class="secondary-button" type="button" data-edit-suggestion="${escapeHtml(item.type)}:${escapeHtml(item.id)}">Edit</button><button class="secondary-button" type="button" data-accept-suggestion="${escapeHtml(item.type)}:${escapeHtml(item.id)}">Accept</button><button class="danger-button" type="button" data-reject-suggestion="${escapeHtml(item.type)}:${escapeHtml(item.id)}">Reject</button></div></article>`;
+}
+
+function bindReviewActions() {
+  document.querySelectorAll("#reviewView .citation").forEach((button) => button.addEventListener("click", () => {
+    setView("sources");
+    loadSourcePreview(button.dataset.sourceId);
+  }));
+  document.querySelectorAll("[data-accept-suggestion]").forEach((button) => button.addEventListener("click", async () => {
+    const [type, id] = button.dataset.acceptSuggestion.split(":");
+    await api(`/api/workspaces/${state.workspace.id}/review_inbox/${type}/${id}/accept`, {method: "POST"});
+    toast(`${labelize(type)} accepted.`);
+    await loadReviewInbox();
+    await refreshWorkspace();
+  }));
+  document.querySelectorAll("[data-reject-suggestion]").forEach((button) => button.addEventListener("click", async () => {
+    const [type, id] = button.dataset.rejectSuggestion.split(":");
+    await api(`/api/workspaces/${state.workspace.id}/review_inbox/${type}/${id}/reject`, {method: "POST"});
+    toast(`${labelize(type)} rejected.`);
+    await loadReviewInbox();
+  }));
+  document.querySelectorAll("[data-edit-suggestion]").forEach((button) => button.addEventListener("click", async () => {
+    const [type, id] = button.dataset.editSuggestion.split(":");
+    const attrs = promptSuggestionEdits(type);
+    if (!attrs) return;
+    await api(`/api/workspaces/${state.workspace.id}/review_inbox/${type}/${id}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(attrs)
+    });
+    toast(`${labelize(type)} suggestion updated.`);
+    await loadReviewInbox();
+  }));
+}
+
+function promptSuggestionEdits(type) {
+  const title = window.prompt(`${labelize(type)} title`);
+  if (title === null) return null;
+  const owner = window.prompt("Owner");
+  if (owner === null) return null;
+
+  if (type === "risk") {
+    const severity = window.prompt("Severity: low, medium, high, or critical", "high");
+    if (severity === null) return null;
+    return {title: title.trim(), owner: owner.trim(), severity: severity.trim()};
+  }
+
+  return {title: title.trim(), owner: owner.trim()};
+}
+
 async function loadMeetings(selectedMeetingId = null) {
   const workspaceId = state.workspace.id;
   const meetings = await api(`/api/workspaces/${workspaceId}/meetings`);
@@ -446,6 +540,9 @@ function bindEvents() {
   qs("#sourceStatusFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#sourceTypeFilter").addEventListener("change", () => loadSources().catch((error) => toast(error.message)));
   qs("#commitmentStatusFilter").addEventListener("change", () => loadCommitments().catch((error) => toast(error.message)));
+  qs("#riskSeverityFilter").addEventListener("change", () => loadRisks().catch((error) => toast(error.message)));
+  qs("#riskStatusFilter").addEventListener("change", () => loadRisks().catch((error) => toast(error.message)));
+  qs("#reviewTypeFilter").addEventListener("change", () => loadReviewInbox().catch((error) => toast(error.message)));
   qs("#meetingDate").value = new Date().toISOString().slice(0, 10);
   qs("#workspaceForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -508,6 +605,33 @@ function bindEvents() {
     const suggestions = await api(`/api/workspaces/${state.workspace.id}/decisions/extract`, {method: "POST"});
     toast(suggestions.length ? `${suggestions.length} decision suggestion${suggestions.length === 1 ? "" : "s"} found.` : "No clear decisions found in ready sources.");
     await loadDecisions();
+  });
+  qs("#riskForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const risk = await api(`/api/workspaces/${state.workspace.id}/risks`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        title: qs("#riskTitle").value.trim(),
+        description: qs("#riskDescription").value.trim(),
+        owner: qs("#riskOwner").value.trim(),
+        severity: qs("#riskSeverity").value,
+        status: qs("#riskStatus").value,
+        mitigation: qs("#riskMitigation").value.trim()
+      })
+    });
+    qs("#riskTitle").value = "";
+    qs("#riskDescription").value = "";
+    qs("#riskOwner").value = "";
+    qs("#riskMitigation").value = "";
+    toast(`Risk created: ${risk.title}`);
+    await loadRisks();
+    await refreshWorkspace();
+  });
+  qs("#extractRisksButton").addEventListener("click", async () => {
+    const suggestions = await api(`/api/workspaces/${state.workspace.id}/risks/extract`, {method: "POST"});
+    toast(suggestions.length ? `${suggestions.length} risk suggestion${suggestions.length === 1 ? "" : "s"} found.` : "No clear risks found in ready sources.");
+    await loadReviewInbox().catch(() => {});
   });
   qs("#meetingForm").addEventListener("submit", async (event) => {
     event.preventDefault();

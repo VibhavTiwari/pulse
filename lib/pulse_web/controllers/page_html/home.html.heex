@@ -11,6 +11,7 @@
       <button class="nav-item" data-view="decisions">Decision Log</button>
       <button class="nav-item" data-view="commitments">Commitment Ledger</button>
       <button class="nav-item" data-view="risks">Risk Radar</button>
+      <button class="nav-item" data-view="review">Review Inbox</button>
       <button class="nav-item" data-view="meetings">Meeting Prep</button>
       <button class="nav-item" data-view="ask">Ask AI</button>
       <button class="nav-item" data-view="sources">Sources</button>
@@ -255,9 +256,90 @@
 
           <h2>Risk Radar</h2>
         </div>
+
+        <button id="extractRisksButton" class="secondary-button" type="button">
+          Extract from sources
+        </button>
+      </div>
+
+      <form id="riskForm" class="source-form">
+        <div class="form-grid">
+          <label>
+            <span>Title</span>
+            <input id="riskTitle" type="text" placeholder="Launch readiness blocker" required />
+          </label>
+          <label>
+            <span>Owner</span>
+            <input id="riskOwner" type="text" placeholder="Mira" required />
+          </label>
+          <label>
+            <span>Severity</span>
+            <select id="riskSeverity">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high" selected>High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            <span>Status</span>
+            <select id="riskStatus">
+              <option value="open">Open</option>
+              <option value="mitigated">Mitigated</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </label>
+          <label>
+            <span>Mitigation</span>
+            <input id="riskMitigation" type="text" placeholder="Current response plan" />
+          </label>
+        </div>
+        <label>
+          <span>Description</span>
+          <textarea id="riskDescription" placeholder="What is the risk or blocker?" required></textarea>
+        </label>
+        <button type="submit">Create risk</button>
+      </form>
+
+      <div class="source-toolbar">
+        <select id="riskSeverityFilter" aria-label="Filter risks by severity">
+          <option value="">All severities</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+        <select id="riskStatusFilter" aria-label="Filter risks by status">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="mitigated">Mitigated</option>
+          <option value="resolved">Resolved</option>
+        </select>
       </div>
 
       <div id="riskList" class="table-list"></div>
+    </section>
+
+    <section id="reviewView" class="view">
+      <div class="section-header">
+        <div>
+          <p class="label">Human approval</p>
+          <h2>Review Inbox</h2>
+        </div>
+      </div>
+
+      <div class="source-toolbar">
+        <select id="reviewTypeFilter" aria-label="Filter suggestions by type">
+          <option value="">All suggestions</option>
+          <option value="decision">Decisions</option>
+          <option value="commitment">Commitments</option>
+          <option value="risk">Risks</option>
+        </select>
+      </div>
+
+      <div id="reviewInboxList" class="table-list"></div>
     </section>
 
     <section id="meetingsView" class="view">
@@ -275,23 +357,20 @@
             <span>Title</span>
             <input id="meetingTitle" type="text" placeholder="Launch readiness review" required />
           </label>
-          <label>
-            <span>Date</span>
-            <input id="meetingDate" type="date" required />
-          </label>
+          <label><span>Date</span> <input id="meetingDate" type="date" required /></label>
           <label>
             <span>Attendees</span>
             <input id="meetingAttendees" type="text" placeholder="Mira, Rina" />
           </label>
         </div>
+
         <label>
-          <span>Description</span>
-          <textarea
+          <span>Description</span> <textarea
             id="meetingDescription"
             placeholder="What should Pulse use to find relevant decisions and open commitments?"
           ></textarea>
         </label>
-        <button type="submit">Create meeting</button>
+         <button type="submit">Create meeting</button>
       </form>
 
       <div class="meeting-layout">
@@ -299,11 +378,14 @@
           <div class="section-header compact">
             <div>
               <p class="label">Saved meetings</p>
+
               <h3>Meetings</h3>
             </div>
           </div>
+
           <div id="meetingList" class="table-list"></div>
         </div>
+
         <div id="meetingPrepPanel" class="source-preview"></div>
       </div>
     </section>

@@ -410,4 +410,124 @@ defmodule PulseWeb.ApiControllerTest do
     unlinked = json_response(conn, 200)
     refute Enum.any?(unlinked["commitments"], &(&1["id"] == commitment["id"]))
   end
+
+  test "risk radar and review inbox APIs support extraction review and approval", %{conn: conn} do
+    conn = post(conn, ~p"/api/workspaces", %{name: "Risk API", root_path: "C:/tmp/rr-api"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/risks", %{
+        title: "Manual launch risk",
+        description: "Known issue entered directly.",
+        severity: "high",
+        owner: "Mira",
+        status: "open"
+      })
+
+    manual = json_response(conn, 200)
+    assert manual["record_state"] == "accepted"
+    assert manual["source_origin"] == "manual"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Decision API Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        text_content: "The team decided to keep beta scoped. Owner is Mira."
+      })
+
+    decision_source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Commitment API Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        text_content: "Action item: Mira will finish launch checklist."
+      })
+
+    commitment_source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Risk API Source",
+        source_type: "meeting_note",
+        origin: "manual_entry",
+        text_content: "Blocker: support coverage is blocking beta expansion; owner is Rina."
+      })
+
+    risk_source = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions/extract", %{
+        source_id: decision_source["id"]
+      })
+
+    [decision] = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/commitments/extract", %{
+        source_id: commitment_source["id"]
+      })
+
+    [commitment] = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/risks/extract", %{
+        source_id: risk_source["id"]
+      })
+
+    [risk] = json_response(conn, 200)
+    assert risk["record_state"] == "suggested"
+    assert risk["source_origin"] == "extracted"
+    assert [%{"source_id" => source_id}] = risk["evidence"]
+    assert source_id == risk_source["id"]
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/review_inbox")
+    inbox = json_response(conn, 200)
+    assert Enum.map(inbox, & &1["type"]) |> Enum.sort() == ["commitment", "decision", "risk"]
+
+    conn =
+      patch(conn, ~p"/api/workspaces/#{workspace["id"]}/review_inbox/risk/#{risk["id"]}", %{
+        severity: "critical",
+        owner: "Rina"
+      })
+
+    updated = json_response(conn, 200)
+    assert updated["record"]["severity"] == "critical"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/review_inbox/risk/#{risk["id"]}/accept")
+
+    accepted_risk = json_response(conn, 200)
+    assert accepted_risk["record"]["record_state"] == "accepted"
+    assert [%{"source_id" => source_id}] = accepted_risk["record"]["evidence"]
+    assert source_id == risk_source["id"]
+
+    conn =
+      post(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/review_inbox/commitment/#{commitment["id"]}/reject"
+      )
+
+    rejected_commitment = json_response(conn, 200)
+    assert rejected_commitment["record"]["record_state"] == "rejected"
+
+    conn =
+      post(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/review_inbox/decision/#{decision["id"]}/accept"
+      )
+
+    accepted_decision = json_response(conn, 200)
+    assert accepted_decision["record"]["record_state"] == "accepted"
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/risks?severity=critical")
+    accepted_risks = json_response(conn, 200)
+    assert Enum.any?(accepted_risks, &(&1["id"] == risk["id"]))
+    refute Enum.any?(accepted_risks, &(&1["id"] == manual["id"]))
+
+    conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/review_inbox")
+    assert json_response(conn, 200) == []
+  end
 end
