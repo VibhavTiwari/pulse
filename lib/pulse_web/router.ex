@@ -50,6 +50,10 @@ defmodule PulseWeb.Router do
          SourceController,
          :reassess_quality
 
+    get "/workspaces/:workspace_id/source_duplicate_flags/:flag_id",
+        SourceController,
+        :show_duplicate_flag
+
     post "/workspaces/:workspace_id/source_duplicate_flags/:flag_id/confirm",
          SourceController,
          :confirm_duplicate

@@ -256,6 +256,13 @@ defmodule Pulse.Sources do
     |> Repo.preload([:source, :matched_source])
   end
 
+  def get_duplicate_flag_for_workspace!(workspace_id, flag_id) do
+    SourceDuplicateFlag
+    |> where([f], f.workspace_id == ^workspace_id and f.id == ^flag_id)
+    |> Repo.one!()
+    |> Repo.preload([:source, :matched_source])
+  end
+
   def detect_duplicates(%Source{} = source) do
     source = Repo.preload(source, [:duplicate_flags])
 

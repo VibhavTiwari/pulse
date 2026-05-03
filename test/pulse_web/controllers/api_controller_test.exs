@@ -168,6 +168,18 @@ defmodule PulseWeb.ApiControllerTest do
              json_response(conn, 200)
 
     conn =
+      get(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/source_duplicate_flags/#{flag["id"]}"
+      )
+
+    detail = json_response(conn, 200)
+    assert detail["id"] == flag["id"]
+    assert detail["matched_source_id"] == plan["id"]
+    assert detail["matched_source_title"] == "Launch Roadmap Plan"
+    assert detail["reason"] =~ "Readable text"
+
+    conn =
       post(
         conn,
         ~p"/api/workspaces/#{workspace["id"]}/source_duplicate_flags/#{flag["id"]}/dismiss"

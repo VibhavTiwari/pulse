@@ -733,7 +733,7 @@ async function loadSourcePreview(sourceId) {
   const textPanel = textReady
     ? `<div class="source-text">${escapeHtml(source.text_content)}</div>`
     : `<p class="empty">${source.processing_status === "failed" ? escapeHtml(source.error_message || "Pulse could not extract readable text from this source.") : "This source is pending readable text extraction."}</p>`;
-  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span>${renderSourceSignals(source)}</div><div class="source-detail-grid"><div class="source-detail"><p class="label">Origin</p><p>${escapeHtml(labelize(source.origin))}</p></div><div class="source-detail"><p class="label">Source date</p><p>${escapeHtml(formatDate(source.source_date) || "Unknown")}</p></div><div class="source-detail"><p class="label">Timeline basis</p><p>${source.source_date ? "Source date" : "Added date fallback"}</p></div><div class="source-detail"><p class="label">Updated</p><p>${escapeHtml(formatDate(source.updated_at))}</p></div></div>${renderSourceQuality(source)}${renderDuplicateFlags(source)}<form id="classificationForm" class="metadata-form"><label><span>P1 classification</span><select id="classificationType">${["meeting","document","update","transcript","plan"].map((type) => `<option value="${type}" ${source.classified_source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><button type="submit">Save classification</button></form><form id="metadataForm" class="metadata-form"><div class="form-grid"><label><span>Title</span><input id="metadataTitle" type="text" value="${escapeHtml(source.title)}" required /></label><label><span>Type</span><select id="metadataType" required>${["note","document","transcript","meeting_note","project_update","other"].map((type) => `<option value="${type}" ${source.source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><label><span>Source date</span><input id="metadataDate" type="date" value="${escapeHtml(source.source_date || "")}" /></label></div><button type="submit">Save metadata</button></form><div class="source-actions"><button id="detectDuplicatesButton" class="secondary-button" type="button">Check duplicates</button><button id="reassessQualityButton" class="secondary-button" type="button">Reassess quality</button>${source.origin === "manual_entry" ? `<button id="editTextButton" class="secondary-button" type="button">Edit text</button>` : ""}</div><h4>Readable text Pulse has stored</h4><div id="sourceTextPanel">${textPanel}</div>`;
+  qs("#sourcePreview").innerHTML = `<h3>${escapeHtml(source.title)}</h3><div class="source-meta"><span class="status ${escapeHtml(source.processing_status)}">${escapeHtml(source.processing_status)}</span><span class="stat-pill">${escapeHtml(labelize(source.source_type))}</span>${renderSourceSignals(source)}</div>${renderClassificationReview(source)}<div class="source-detail-grid"><div class="source-detail"><p class="label">Origin</p><p>${escapeHtml(labelize(source.origin))}</p></div><div class="source-detail"><p class="label">Source date</p><p>${escapeHtml(formatDate(source.source_date) || "Unknown")}</p></div><div class="source-detail"><p class="label">Timeline basis</p><p>${source.source_date ? "Source date" : "Added date fallback"}</p></div><div class="source-detail"><p class="label">Updated</p><p>${escapeHtml(formatDate(source.updated_at))}</p></div></div>${renderSourceQuality(source)}${renderDuplicateFlags(source)}<form id="classificationForm" class="metadata-form"><label><span>P1 classification</span><select id="classificationType">${["meeting","document","update","transcript","plan"].map((type) => `<option value="${type}" ${source.classified_source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><button type="submit">Save classification</button></form><form id="metadataForm" class="metadata-form"><div class="form-grid"><label><span>Title</span><input id="metadataTitle" type="text" value="${escapeHtml(source.title)}" required /></label><label><span>Type</span><select id="metadataType" required>${["note","document","transcript","meeting_note","project_update","other"].map((type) => `<option value="${type}" ${source.source_type === type ? "selected" : ""}>${escapeHtml(labelize(type))}</option>`).join("")}</select></label><label><span>Source date</span><input id="metadataDate" type="date" value="${escapeHtml(source.source_date || "")}" /></label></div><button type="submit">Save metadata</button></form><div class="source-actions"><button id="detectDuplicatesButton" class="secondary-button" type="button">Check duplicates</button><button id="reassessQualityButton" class="secondary-button" type="button">Reassess quality</button>${source.origin === "manual_entry" ? `<button id="editTextButton" class="secondary-button" type="button">Edit text</button>` : ""}</div><h4>Readable text Pulse has stored</h4><div id="sourceTextPanel">${textPanel}</div>`;
   qs("#classificationForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     await api(`/api/workspaces/${state.workspace.id}/sources/${source.id}/classification`, {
@@ -788,10 +788,27 @@ async function loadSourcePreview(sourceId) {
   qs("#editTextButton")?.addEventListener("click", () => renderTextEditor(source));
 }
 
+function renderClassificationReview(source) {
+  if (source.classification_confidence !== "low") return "";
+
+  const type = labelize(source.classified_source_type || "unclassified");
+  return `<section class="source-signal-panel"><p class="label">Classification review</p><p class="empty">Pulse has low confidence that this is a ${escapeHtml(type)} source. Review or correct the classification before relying on it.</p></section>`;
+}
+
 function renderSourceQuality(source) {
   const reasons = source.quality_reasons || [];
-  const explanation = reasons.length ? reasons.map(labelize).join(", ") : "No weak quality reasons recorded.";
+  const explanation = reasons.length ? reasons.map(labelize).join(", ") : qualityExplanation(source);
   return `<section class="source-signal-panel"><p class="label">Quality signal</p><div class="source-meta"><span class="status ${escapeHtml(source.quality_label || "unknown")}">${escapeHtml(source.quality_label || "unknown")}</span><span class="stat-pill">${escapeHtml(explanation)}</span></div></section>`;
+}
+
+function qualityExplanation(source) {
+  if ((source.quality_label || "unknown") === "unknown") {
+    return source.processing_status === "pending"
+      ? "Quality is unknown because this source is still waiting for readable text."
+      : "Quality has not been assessed yet, or Pulse does not have enough readable evidence.";
+  }
+
+  return "No weak quality reasons recorded.";
 }
 
 function renderDuplicateFlags(source) {

@@ -18,6 +18,11 @@ defmodule PulseWeb.Api.SourceController do
     json(conn, Enum.map(flags, &JSONHelpers.source_duplicate_flag/1))
   end
 
+  def show_duplicate_flag(conn, %{"workspace_id" => workspace_id, "flag_id" => flag_id}) do
+    flag = Sources.get_duplicate_flag_for_workspace!(workspace_id, flag_id)
+    json(conn, JSONHelpers.source_duplicate_flag(flag))
+  end
+
   def create_text(conn, %{"workspace_id" => workspace_id} = params) do
     case Sources.create_text_source(workspace_id, params) do
       {:ok, source} ->
