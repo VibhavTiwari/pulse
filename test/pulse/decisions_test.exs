@@ -46,6 +46,81 @@ defmodule Pulse.DecisionsTest do
     assert "is invalid" in errors.status
   end
 
+  test "decision lifecycle supports proposed accepted reversed and superseded states", %{
+    workspace: workspace
+  } do
+    {:ok, proposed} =
+      Decisions.create_manual_decision(workspace.id, %{
+        "title" => "Consider private beta",
+        "context" => "Team is considering a private beta path.",
+        "decision_date" => "2026-05-03",
+        "owner" => "Mira",
+        "status" => "active",
+        "decision_state" => "proposed",
+        "rationale" => "Need a safer launch path",
+        "tradeoffs" => "Less reach, more control"
+      })
+
+    assert proposed.decision_state == "proposed"
+    assert proposed.rationale == "Need a safer launch path"
+    assert [%{id: proposed_id}] = Decisions.list_accepted(workspace.id)
+    assert proposed_id == proposed.id
+
+    {:ok, accepted} = Decisions.accept_proposed_decision(proposed)
+    assert accepted.decision_state == "accepted"
+
+    {:ok, replacement} =
+      Decisions.create_manual_decision(workspace.id, %{
+        "title" => "Ship invite-only beta",
+        "context" => "Invite-only beta replaces the broader private beta.",
+        "decision_date" => "2026-05-04",
+        "owner" => "Mira",
+        "status" => "active"
+      })
+
+    {:ok, superseded} = Decisions.supersede_decision(accepted, replacement.id)
+    assert superseded.decision_state == "superseded"
+    assert superseded.superseded_by_decision_id == replacement.id
+    assert superseded.superseded_by_decision.title == replacement.title
+    refute Enum.any?(Decisions.list_accepted(workspace.id), &(&1.id == superseded.id))
+    assert Enum.any?(Decisions.list_historical(workspace.id), &(&1.id == superseded.id))
+
+    {:ok, reversed} = Decisions.reverse_decision(replacement, "Support model changed.")
+    assert reversed.decision_state == "reversed"
+    assert reversed.reversal_reason == "Support model changed."
+    refute Enum.any?(Decisions.list_accepted(workspace.id), &(&1.id == reversed.id))
+  end
+
+  test "supersession rejects self and cross-workspace replacements", %{workspace: workspace} do
+    {:ok, decision} =
+      Decisions.create_manual_decision(workspace.id, %{
+        "title" => "Scoped launch",
+        "context" => "Keep launch scoped.",
+        "decision_date" => "2026-05-03",
+        "owner" => "Mira",
+        "status" => "active"
+      })
+
+    assert {:error, changeset} = Decisions.supersede_decision(decision, decision.id)
+    assert "cannot reference itself" in errors_on(changeset).superseded_by_decision_id
+
+    {:ok, other_workspace} =
+      Workspaces.create_workspace(%{"name" => "Other Decision", "root_path" => "C:/tmp/other-d"})
+
+    {:ok, other_decision} =
+      Decisions.create_manual_decision(other_workspace.id, %{
+        "title" => "Other workspace replacement",
+        "context" => "This belongs elsewhere.",
+        "decision_date" => "2026-05-04",
+        "owner" => "Rina",
+        "status" => "active"
+      })
+
+    assert {:error, changeset} = Decisions.supersede_decision(decision, other_decision.id)
+
+    assert "must be in the same workspace" in errors_on(changeset).superseded_by_decision_id
+  end
+
   test "extracting from ready source creates suggested decisions with evidence", %{
     workspace: workspace
   } do

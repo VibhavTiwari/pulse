@@ -127,6 +127,10 @@ async function loadViewData() {
     await loadMeetings();
   }
 
+  if (state.activeView === "ask") {
+    await loadAskTools();
+  }
+
   if (state.activeView === "sources") await loadSources();
 }
 
@@ -386,7 +390,7 @@ async function loadDecisions() {
 }
 
 function renderDecisionCard(decision) {
-  return `<article class="row-card" data-record-id="${escapeHtml(decision.id)}"><div><div class="source-meta"><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(labelize(decision.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionEvidence(decision)}</div></article>`;
+  return `<article class="row-card" data-record-id="${escapeHtml(decision.id)}"><div><div class="source-meta"><span class="status ${escapeHtml(decision.decision_state || "accepted")}">${escapeHtml(labelize(decision.decision_state || "accepted"))}</span><span class="status ${escapeHtml(decision.status)}">${escapeHtml(decision.status)}</span><span class="stat-pill">${escapeHtml(labelize(decision.source_origin || "manual"))}</span><span class="stat-pill">${escapeHtml(formatDate(decision.decision_date))}</span><span class="stat-pill">${escapeHtml(decision.evidence_count ? `${decision.evidence_count} evidence` : "No evidence")}</span></div><h3>${escapeHtml(decision.title)}</h3><p>${escapeHtml(decision.context)}</p><p><strong>Owner:</strong> ${escapeHtml(decision.owner)}</p>${renderDecisionRationale(decision)}${renderDecisionLineage(decision)}${renderDecisionEvidence(decision)}</div><div class="source-actions"><button class="secondary-button" type="button" data-edit-decision="${escapeHtml(decision.id)}">Edit</button><button class="secondary-button" type="button" data-accept-proposed-decision="${escapeHtml(decision.id)}">Mark accepted</button><button class="secondary-button" type="button" data-reverse-decision="${escapeHtml(decision.id)}">Reverse</button><button class="secondary-button" type="button" data-supersede-decision="${escapeHtml(decision.id)}">Supersede</button></div></article>`;
 }
 
 function renderDecisionSuggestion(decision) {
@@ -398,6 +402,29 @@ function renderDecisionEvidence(decision) {
   const evidence = decision.evidence || [];
   if (!evidence.length) return `<p class="empty">Manual decision with no linked source evidence.</p>`;
   return `<div class="citation-list">${evidence.map((reference) => `<button class="citation" type="button" data-source-id="${escapeHtml(reference.source_id)}"><strong>${escapeHtml(reference.source_title || "Source evidence")} - ${escapeHtml(reference.location_hint || "source")}</strong><span>${escapeHtml(reference.evidence_text || "")}</span></button>`).join("")}</div>`;
+}
+
+function renderDecisionRationale(decision) {
+  const rationale = decision.rationale ? `<p><strong>Rationale:</strong> ${escapeHtml(decision.rationale)}</p>` : `<p class="empty">No rationale recorded yet.</p>`;
+  const tradeoffs = decision.tradeoffs ? `<p><strong>Tradeoffs:</strong> ${escapeHtml(decision.tradeoffs)}</p>` : "";
+  return `${rationale}${tradeoffs}`;
+}
+
+function renderDecisionLineage(decision) {
+  if (decision.decision_state === "reversed") {
+    return `<p><strong>Reversal:</strong> ${escapeHtml(decision.reversal_reason || "No reversal reason recorded.")}</p>`;
+  }
+
+  if (decision.decision_state === "superseded") {
+    const replacement = decision.superseded_by_decision?.title || decision.superseded_by_decision_id || "replacement decision";
+    return `<p><strong>Superseded by:</strong> ${escapeHtml(replacement)}</p>`;
+  }
+
+  if (decision.superseded_decision_count) {
+    return `<p><strong>Replaces:</strong> ${decision.superseded_decision_count} earlier decision${decision.superseded_decision_count === 1 ? "" : "s"}.</p>`;
+  }
+
+  return "";
 }
 
 function bindDecisionActions() {
@@ -421,12 +448,47 @@ function bindDecisionActions() {
     if (title === null) return;
     const owner = window.prompt("Owner");
     if (owner === null) return;
+    const rationale = window.prompt("Rationale");
+    if (rationale === null) return;
+    const tradeoffs = window.prompt("Tradeoffs");
+    if (tradeoffs === null) return;
     await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.editDecision}`, {
       method: "PATCH",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({title: title.trim(), owner: owner.trim()})
+      body: JSON.stringify({title: title.trim(), owner: owner.trim(), rationale: rationale.trim(), tradeoffs: tradeoffs.trim()})
     });
-    toast("Decision suggestion updated.");
+    toast("Decision updated.");
+    await loadDecisions();
+  }));
+  document.querySelectorAll("[data-accept-proposed-decision]").forEach((button) => button.addEventListener("click", async () => {
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.acceptProposedDecision}/lifecycle`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({decision_state: "accepted"})
+    });
+    toast("Decision marked accepted.");
+    await loadDecisions();
+  }));
+  document.querySelectorAll("[data-reverse-decision]").forEach((button) => button.addEventListener("click", async () => {
+    const reason = window.prompt("Why was this decision reversed?");
+    if (reason === null) return;
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.reverseDecision}/reverse`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({reversal_reason: reason.trim()})
+    });
+    toast("Decision reversed.");
+    await loadDecisions();
+  }));
+  document.querySelectorAll("[data-supersede-decision]").forEach((button) => button.addEventListener("click", async () => {
+    const replacementId = window.prompt("Replacement decision ID");
+    if (replacementId === null) return;
+    await api(`/api/workspaces/${state.workspace.id}/decisions/${button.dataset.supersedeDecision}/supersede`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({superseded_by_decision_id: replacementId.trim()})
+    });
+    toast("Decision superseded.");
     await loadDecisions();
   }));
 }
@@ -664,17 +726,66 @@ function bindMeetingPrepActions() {
   }));
 }
 
+async function loadAskTools() {
+  const sources = await api(`/api/workspaces/${state.workspace.id}/sources?processing_status=ready`);
+  const options = sources.map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.title)}</option>`).join("");
+  qs("#compareSourceA").innerHTML = options || `<option value="">No ready sources</option>`;
+  qs("#compareSourceB").innerHTML = options || `<option value="">No ready sources</option>`;
+  if (sources.length > 1) qs("#compareSourceB").selectedIndex = 1;
+}
+
 function renderAnswer(answer) {
   state.askThreadId = answer.thread_id || state.askThreadId;
   const citations = answer.citations || [];
-  const turn = `<article class="ask-turn"><p class="label">Question</p><p>${escapeHtml(answer.question)}</p><div class="source-meta"><span class="status ${escapeHtml(answer.evidence_state || "none")}">${escapeHtml(answer.evidence_state || "none")} evidence</span></div><p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map((citation) => `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} - ${escapeHtml(citation.source_location || citation.location_hint || "source passage")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`).join("")}</div>` : `<p class="empty">No citations were found, so Pulse is not making a project-truth claim.</p>`}</article>`;
+  const turn = `<article class="ask-turn" data-answer-id="${escapeHtml(answer.answer_id)}"><p class="label">Question</p><p>${escapeHtml(answer.question)}</p><div class="source-meta"><span class="status ${escapeHtml(answer.evidence_state || "none")}">${escapeHtml(answer.evidence_state || "none")} evidence</span><button class="secondary-button" type="button" data-show-evidence="${escapeHtml(answer.answer_id)}">Show evidence</button></div><p>${escapeHtml(answer.answer)}</p>${citations.length ? `<div class="citation-list">${citations.map(renderAnswerCitation).join("")}</div>` : `<p class="empty">No citations were found, so Pulse is not making a project-truth claim.</p>`}<div class="answer-evidence-panel"></div></article>`;
   const panel = qs("#answerPanel");
   if (panel.querySelector(".empty") && !panel.querySelector(".ask-turn")) panel.innerHTML = "";
   panel.insertAdjacentHTML("beforeend", turn);
-  document.querySelectorAll(".citation").forEach((button) => button.addEventListener("click", () => {
+  bindAnswerEvidenceActions();
+}
+
+function renderAnswerCitation(citation) {
+  if (citation.citation_kind === "project_record") {
+    return `<button class="citation" type="button" data-project-record-type="${escapeHtml(citation.project_record_type)}" data-project-record-id="${escapeHtml(citation.project_record_id)}"><strong>${escapeHtml(labelize(citation.project_record_type || "project record"))} - ${escapeHtml(citation.location_hint || "approved project record")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`;
+  }
+
+  return `<button class="citation" type="button" data-source-id="${escapeHtml(citation.source_id)}"><strong>${escapeHtml(citation.source_title)} - ${escapeHtml(citation.source_location || citation.location_hint || "source passage")}</strong><span>${escapeHtml(citation.quote || citation.evidence_text)}</span></button>`;
+}
+
+function bindAnswerEvidenceActions() {
+  document.querySelectorAll("#answerPanel .citation[data-source-id]").forEach((button) => button.addEventListener("click", () => {
     setView("sources");
     loadSourcePreview(button.dataset.sourceId);
   }));
+  document.querySelectorAll("#answerPanel .citation[data-project-record-type]").forEach((button) => button.addEventListener("click", () => {
+    setView(button.dataset.projectRecordType === "commitment" ? "commitments" : "decisions", {view: button.dataset.projectRecordType === "commitment" ? "commitments" : "decisions", id: button.dataset.projectRecordId});
+  }));
+  document.querySelectorAll("[data-show-evidence]").forEach((button) => button.addEventListener("click", async () => {
+    const evidence = await api(`/api/workspaces/${state.workspace.id}/ask_answers/${button.dataset.showEvidence}/evidence`);
+    const turn = button.closest(".ask-turn");
+    turn.querySelector(".answer-evidence-panel").innerHTML = renderEvidenceMode(evidence);
+    bindAnswerEvidenceActions();
+  }));
+}
+
+function renderEvidenceMode(evidence) {
+  const citations = evidence.citations || [];
+  if (!citations.length) return `<p class="empty">Passage-level evidence is unavailable for this answer.</p>`;
+  return `<section class="source-signal-panel"><p class="label">Show evidence - ${escapeHtml(evidence.evidence_state)} evidence</p><div class="citation-list">${citations.map(renderAnswerCitation).join("")}</div></section>`;
+}
+
+function renderComparison(comparison) {
+  const findings = comparison.findings || [];
+  const body = `<article class="ask-turn"><p class="label">Source comparison</p><div class="source-meta"><span class="status ${escapeHtml(comparison.evidence_state || "none")}">${escapeHtml(comparison.evidence_state || "none")} evidence</span></div><p>${escapeHtml(comparison.summary)}</p>${findings.length ? `<div class="brief-items">${findings.map(renderComparisonFinding).join("")}</div>` : `<p class="empty">Comparison evidence was insufficient.</p>`}</article>`;
+  const panel = qs("#answerPanel");
+  if (panel.querySelector(".empty") && !panel.querySelector(".ask-turn")) panel.innerHTML = "";
+  panel.insertAdjacentHTML("beforeend", body);
+  bindAnswerEvidenceActions();
+}
+
+function renderComparisonFinding(finding) {
+  const evidence = finding.evidence || [];
+  return `<article class="brief-item"><div class="source-meta"><span class="status ${escapeHtml(finding.finding_type)}">${escapeHtml(labelize(finding.finding_type))}</span><span class="stat-pill">${escapeHtml(finding.evidence_state || "none")} evidence</span></div><p>${escapeHtml(finding.summary)}</p>${evidence.length ? `<div class="citation-list">${evidence.map((item) => `<button class="citation" type="button" data-source-id="${escapeHtml(item.source_id)}"><strong>${escapeHtml(item.source_title)} - ${escapeHtml(item.location_hint || "source text")}</strong><span>${escapeHtml(item.evidence_text || item.passage_text || "")}</span></button>`).join("")}</div>` : ""}</article>`;
 }
 
 async function loadSources() {
@@ -884,13 +995,18 @@ function bindEvents() {
         context: qs("#decisionContext").value.trim(),
         decision_date: qs("#decisionDate").value,
         owner: qs("#decisionOwner").value.trim(),
-        status: qs("#decisionStatus").value
+        status: qs("#decisionStatus").value,
+        decision_state: qs("#decisionState").value,
+        rationale: qs("#decisionRationale").value.trim(),
+        tradeoffs: qs("#decisionTradeoffs").value.trim()
       })
     });
     qs("#decisionTitle").value = "";
     qs("#decisionContext").value = "";
     qs("#decisionDate").value = "";
     qs("#decisionOwner").value = "";
+    qs("#decisionRationale").value = "";
+    qs("#decisionTradeoffs").value = "";
     toast(`Decision created: ${decision.title}`);
     await loadDecisions();
     await refreshWorkspace();
@@ -1018,6 +1134,16 @@ function bindEvents() {
       : `/api/workspaces/${state.workspace.id}/ask`;
     renderAnswer(await api(askPath, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})}));
     qs("#questionInput").value = "";
+  });
+  qs("#compareSourcesForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const sourceIds = [qs("#compareSourceA").value, qs("#compareSourceB").value].filter(Boolean);
+    const comparison = await api(`/api/workspaces/${state.workspace.id}/ask/compare_sources`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({source_ids: sourceIds, question: qs("#compareQuestion").value.trim()})
+    });
+    renderComparison(comparison);
   });
   qs("#newAskThread").addEventListener("click", () => {
     state.askThreadId = null;

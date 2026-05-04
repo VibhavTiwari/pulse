@@ -21,10 +21,10 @@ h3 { font-size: 16px; }
 .health-row, .source-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .health-row { justify-content: flex-end; }
 .stat-pill, .status { display: inline-flex; align-items: center; min-height: 30px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 13px; }
-.status.ready, .status.done, .status.resolved, .status.mitigated, .status.strong { color: var(--ok); background: #edf8f2; border-color: #cce8d9; }
-.status.usable, .status.weak, .status.mixed, .status.running { color: #8a5a12; background: #fff7e8; border-color: #efd7ad; }
+.status.ready, .status.done, .status.resolved, .status.mitigated, .status.strong, .status.accepted, .status.added { color: var(--ok); background: #edf8f2; border-color: #cce8d9; }
+.status.usable, .status.weak, .status.mixed, .status.running, .status.proposed, .status.changed, .status.conflict { color: #8a5a12; background: #fff7e8; border-color: #efd7ad; }
 .status.none, .status.pending { color: var(--muted); background: #f5f7fa; border-color: var(--line); }
-.status.failed, .status.deleted, .status.blocked, .status.open, .status.poor { color: var(--danger); background: #fff0f0; border-color: #f2cece; }
+.status.failed, .status.deleted, .status.blocked, .status.open, .status.poor, .status.reversed, .status.superseded, .status.removed { color: var(--danger); background: #fff0f0; border-color: #f2cece; }
 .setup-panel, .view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 24px; }
 .setup-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
 .hidden, .view { display: none; }

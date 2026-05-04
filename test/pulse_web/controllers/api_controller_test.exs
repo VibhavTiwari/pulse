@@ -29,6 +29,20 @@ defmodule PulseWeb.ApiControllerTest do
     assert [_citation] = answer["citations"]
 
     conn =
+      get(
+        conn,
+        ~p"/api/workspaces/#{workspace["id"]}/ask_answers/#{answer["answer_id"]}/evidence"
+      )
+
+    answer_evidence = json_response(conn, 200)
+    assert answer_evidence["answer_id"] == answer["answer_id"]
+
+    assert [%{"citation_kind" => "source_passage", "source_passage_id" => passage_id}] =
+             answer_evidence["citations"]
+
+    assert passage_id
+
+    conn =
       post(
         conn,
         ~p"/api/workspaces/#{workspace["id"]}/ask_threads/#{answer["thread_id"]}/messages",
@@ -43,6 +57,69 @@ defmodule PulseWeb.ApiControllerTest do
     conn = get(conn, ~p"/api/workspaces/#{workspace["id"]}/ask_threads/#{answer["thread_id"]}")
     thread = json_response(conn, 200)
     assert length(thread["messages"]) == 4
+  end
+
+  test "P1 Ask APIs compare sources and cite approved project memory", %{conn: conn} do
+    conn = post(conn, ~p"/api/workspaces", %{name: "P1 Ask API", root_path: "C:/tmp/p1-ask"})
+    workspace = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Launch Update One",
+        source_type: "project_update",
+        origin: "manual_entry",
+        text_content: "Support readiness is blocked. Mira owns the launch checklist."
+      })
+
+    earlier = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{
+        title: "Launch Update Two",
+        source_type: "project_update",
+        origin: "manual_entry",
+        text_content:
+          "Support readiness is unblocked. Mira owns the launch checklist. Rina will staff support."
+      })
+
+    later = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/ask/compare_sources", %{
+        source_ids: [earlier["id"], later["id"]],
+        question: "What changed between these updates?"
+      })
+
+    comparison = json_response(conn, 200)
+    assert comparison["evidence_state"] in ["strong", "mixed"]
+    assert Enum.any?(comparison["findings"], &(&1["finding_type"] in ["added", "conflict"]))
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Keep launch invite-only",
+        context: "Launch remains invite-only until support readiness is proven.",
+        decision_date: "2026-05-03",
+        owner: "Mira",
+        status: "active",
+        rationale: "Support coverage is the constraint",
+        tradeoffs: "Slower growth for safer onboarding"
+      })
+
+    decision = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/ask", %{
+        question: "Why is launch invite-only?"
+      })
+
+    memory_answer = json_response(conn, 200)
+    assert memory_answer["answer"] =~ "Rationale"
+
+    assert Enum.any?(
+             memory_answer["citations"],
+             &(&1["citation_kind"] == "project_record" and
+                 &1["project_record_id"] == decision["id"])
+           )
   end
 
   test "ask API returns explicit no-evidence state without citations", %{conn: conn} do
@@ -211,6 +288,39 @@ defmodule PulseWeb.ApiControllerTest do
     manual = json_response(conn, 200)
     assert manual["record_state"] == "accepted"
     assert manual["source_origin"] == "manual"
+    assert manual["decision_state"] == "accepted"
+    assert manual["rationale"] == nil
+
+    conn =
+      patch(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions/#{manual["id"]}/lifecycle", %{
+        decision_state: "proposed",
+        rationale: "Need leadership review",
+        tradeoffs: "More review time"
+      })
+
+    proposed = json_response(conn, 200)
+    assert proposed["decision_state"] == "proposed"
+    assert proposed["rationale"] == "Need leadership review"
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions", %{
+        title: "Replacement decision",
+        context: "This replaces the manual decision.",
+        decision_date: "2026-05-04",
+        owner: "Mira",
+        status: "active"
+      })
+
+    replacement = json_response(conn, 200)
+
+    conn =
+      post(conn, ~p"/api/workspaces/#{workspace["id"]}/decisions/#{manual["id"]}/supersede", %{
+        superseded_by_decision_id: replacement["id"]
+      })
+
+    superseded = json_response(conn, 200)
+    assert superseded["decision_state"] == "superseded"
+    assert superseded["superseded_by_decision"]["id"] == replacement["id"]
 
     conn =
       post(conn, ~p"/api/workspaces/#{workspace["id"]}/sources/text", %{

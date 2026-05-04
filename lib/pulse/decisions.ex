@@ -1,4 +1,5 @@
 defmodule Pulse.Decisions do
+  import Ecto.Changeset
   import Ecto.Query
 
   alias Ecto.Multi
@@ -51,6 +52,7 @@ defmodule Pulse.Decisions do
         "source_origin" => @manual_origin
       })
       |> Map.put_new("status", "active")
+      |> Map.put_new("decision_state", "accepted")
 
     evidence_source_id = attrs["evidence_source_id"]
     evidence_text = attrs["evidence_text"]
@@ -69,11 +71,47 @@ defmodule Pulse.Decisions do
   def update_decision(%Decision{} = decision, attrs) do
     decision
     |> Decision.changeset(stringify_keys(attrs))
+    |> validate_supersession_workspace(decision.workspace_id)
     |> Repo.update()
     |> case do
       {:ok, decision} -> {:ok, with_evidence(decision)}
       error -> error
     end
+  end
+
+  def update_lifecycle(%Decision{} = decision, attrs) do
+    attrs =
+      attrs
+      |> stringify_keys()
+      |> Map.take([
+        "decision_state",
+        "superseded_by_decision_id",
+        "reversal_reason",
+        "rationale",
+        "tradeoffs",
+        "alternatives_considered"
+      ])
+      |> normalize_lifecycle_attrs()
+
+    update_decision(decision, attrs)
+  end
+
+  def accept_proposed_decision(%Decision{} = decision) do
+    update_lifecycle(decision, %{"decision_state" => "accepted"})
+  end
+
+  def reverse_decision(%Decision{} = decision, reason \\ nil) do
+    update_lifecycle(decision, %{
+      "decision_state" => "reversed",
+      "reversal_reason" => reason
+    })
+  end
+
+  def supersede_decision(%Decision{} = decision, superseded_by_decision_id) do
+    update_lifecycle(decision, %{
+      "decision_state" => "superseded",
+      "superseded_by_decision_id" => superseded_by_decision_id
+    })
   end
 
   def accept_decision(%Decision{} = decision) do
@@ -89,7 +127,7 @@ defmodule Pulse.Decisions do
 
       true ->
         decision
-        |> Decision.changeset(%{"record_state" => "accepted"})
+        |> Decision.changeset(%{"record_state" => "accepted", "decision_state" => "accepted"})
         |> Repo.update()
         |> case do
           {:ok, decision} -> {:ok, with_evidence(decision)}
@@ -156,12 +194,25 @@ defmodule Pulse.Decisions do
   def evidence_for(%Decision{} = decision), do: Evidence.list_for_record("decision", decision.id)
 
   def with_evidence(%Decision{} = decision) do
-    Map.put(decision, :evidence, evidence_for(decision))
+    decision
+    |> Repo.preload([:superseded_by_decision, :superseded_decisions], force: true)
+    |> Map.put(:evidence, evidence_for(decision))
   end
 
   defp list_by_state(workspace_id, state, filters) do
     Decision
     |> where([d], d.workspace_id == ^workspace_id and d.record_state == ^state)
+    |> maybe_current_only(filters)
+    |> apply_filters(filters)
+    |> order_by([d], desc: d.decision_date, desc: d.inserted_at)
+    |> Repo.all()
+    |> Enum.map(&with_evidence/1)
+  end
+
+  def list_historical(workspace_id, filters \\ %{}) do
+    Decision
+    |> where([d], d.workspace_id == ^workspace_id and d.record_state == "accepted")
+    |> where([d], d.decision_state in ["reversed", "superseded"])
     |> apply_filters(filters)
     |> order_by([d], desc: d.decision_date, desc: d.inserted_at)
     |> Repo.all()
@@ -169,10 +220,54 @@ defmodule Pulse.Decisions do
   end
 
   defp apply_filters(query, filters) do
-    Enum.reduce([:status, :owner], query, fn field, acc ->
+    Enum.reduce([:status, :owner, :decision_state], query, fn field, acc ->
       value = filters[to_string(field)] || filters[field]
       if is_nil(value) or value == "", do: acc, else: where(acc, [d], field(d, ^field) == ^value)
     end)
+  end
+
+  defp maybe_current_only(query, filters) do
+    include_historical? = truthy?(filters["include_historical"] || filters[:include_historical])
+    decision_state_filter = filters["decision_state"] || filters[:decision_state]
+
+    if include_historical? or present?(decision_state_filter) do
+      query
+    else
+      where(query, [d], d.decision_state in ["accepted", "proposed"])
+    end
+  end
+
+  defp normalize_lifecycle_attrs(%{"decision_state" => state} = attrs)
+       when state in ["accepted", "proposed"] do
+    attrs
+    |> Map.put("superseded_by_decision_id", nil)
+    |> Map.put("reversal_reason", nil)
+  end
+
+  defp normalize_lifecycle_attrs(%{"decision_state" => "reversed"} = attrs) do
+    Map.put(attrs, "superseded_by_decision_id", nil)
+  end
+
+  defp normalize_lifecycle_attrs(attrs), do: attrs
+
+  defp validate_supersession_workspace(changeset, workspace_id) do
+    superseded_by_id = get_field(changeset, :superseded_by_decision_id)
+
+    if is_nil(superseded_by_id) do
+      changeset
+    else
+      valid? =
+        Repo.exists?(
+          from d in Decision,
+            where:
+              d.id == ^superseded_by_id and d.workspace_id == ^workspace_id and
+                d.record_state == "accepted"
+        )
+
+      if valid?,
+        do: changeset,
+        else: add_error(changeset, :superseded_by_decision_id, "must be in the same workspace")
+    end
   end
 
   defp maybe_attach_evidence(multi, _workspace_id, nil, _evidence_text, _location_hint), do: multi
@@ -243,7 +338,8 @@ defmodule Pulse.Decisions do
         "owner" => attrs["owner"],
         "status" => attrs["status"],
         "record_state" => "suggested",
-        "source_origin" => @extracted_origin
+        "source_origin" => @extracted_origin,
+        "decision_state" => "proposed"
       })
     )
     |> Multi.run(:evidence, fn _repo, %{decision: decision} ->
@@ -323,6 +419,8 @@ defmodule Pulse.Decisions do
   end
 
   defp blank?(value), do: is_nil(value) or (is_binary(value) and String.trim(value) == "")
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
+  defp truthy?(value), do: value in [true, "true", "1", 1]
 
   defp stringify_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
 end

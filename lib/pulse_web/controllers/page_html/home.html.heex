@@ -200,6 +200,26 @@
 
             <option value="inactive">Inactive</option>
           </select>
+        </label>
+        <label>
+          <span>Lifecycle</span>
+          <select id="decisionState">
+            <option value="accepted">Accepted</option>
+
+            <option value="proposed">Proposed</option>
+          </select>
+        </label>
+        <label>
+          <span>Rationale</span> <textarea
+            id="decisionRationale"
+            placeholder="Why did the team choose this path?"
+          ></textarea>
+        </label>
+        <label>
+          <span>Tradeoffs</span> <textarea
+            id="decisionTradeoffs"
+            placeholder="What tradeoffs or alternatives were accepted?"
+          ></textarea>
         </label> <button type="submit">Create decision</button>
       </form>
 
@@ -493,6 +513,27 @@
               placeholder="What decisions have we made about the launch plan?"
               required
             ></textarea> <button type="submit">Ask with citations</button>
+          </form>
+
+          <form id="compareSourcesForm" class="metadata-form">
+            <div class="form-grid">
+              <label>
+                <span>Earlier source</span> <select id="compareSourceA" required></select>
+              </label>
+              <label>
+                <span>Later source</span> <select id="compareSourceB" required></select>
+              </label>
+            </div>
+
+            <label>
+              <span>Comparison question</span>
+              <input
+                id="compareQuestion"
+                type="text"
+                value="What changed between these updates?"
+                required
+              />
+            </label> <button class="secondary-button" type="submit">Compare sources</button>
           </form>
 
           <div id="answerPanel" class="answer-panel">

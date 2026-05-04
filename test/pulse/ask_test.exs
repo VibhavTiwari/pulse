@@ -1,7 +1,7 @@
 defmodule Pulse.AskTest do
   use Pulse.DataCase
 
-  alias Pulse.{Ask, Repo, Sources, Workspaces}
+  alias Pulse.{Ask, Commitments, Decisions, Repo, Sources, Workspaces}
   alias Pulse.Ask.{AnswerCitation, Message}
 
   setup do
@@ -120,5 +120,105 @@ defmodule Pulse.AskTest do
 
     refute changeset.valid?
     assert %{source_id: ["is invalid"], source_passage_id: ["is invalid"]} = errors_on(changeset)
+  end
+
+  test "answers use accepted project memory and expose project-record evidence", %{
+    workspace: workspace
+  } do
+    {:ok, decision} =
+      Decisions.create_manual_decision(workspace.id, %{
+        "title" => "Keep launch in private beta",
+        "context" => "Public launch waits until support readiness is proven.",
+        "decision_date" => "2026-05-03",
+        "owner" => "Mira",
+        "status" => "active",
+        "rationale" => "Support coverage is the launch constraint",
+        "tradeoffs" => "Slower growth in exchange for safer onboarding"
+      })
+
+    {:ok, commitment} =
+      Commitments.create_manual_commitment(workspace.id, %{
+        "title" => "Prepare support readiness checklist",
+        "description" => "Mira owns the support checklist before launch expansion.",
+        "owner" => "Mira",
+        "due_date_known" => false,
+        "status" => "open"
+      })
+
+    {:ok, rejected} =
+      Decisions.create_manual_decision(workspace.id, %{
+        "title" => "Rejected public launch",
+        "context" => "This should not become project memory.",
+        "decision_date" => "2026-05-03",
+        "owner" => "Rina",
+        "status" => "active"
+      })
+
+    {:ok, _rejected} = Decisions.reject_decision(%{rejected | record_state: "suggested"})
+
+    {:ok, answer} = Ask.ask(workspace.id, "What was decided about launch and who owns support?")
+
+    assert answer.evidence_state == "strong"
+    assert answer.answer =~ "Accepted decision"
+    assert answer.answer =~ "Accepted commitment"
+    assert answer.answer =~ "Rationale"
+    refute answer.answer =~ "Rejected public launch"
+
+    assert Enum.any?(
+             answer.citations,
+             &(&1.citation_kind == "project_record" and &1.project_record_id == decision.id)
+           )
+
+    assert Enum.any?(
+             answer.citations,
+             &(&1.citation_kind == "project_record" and &1.project_record_id == commitment.id)
+           )
+
+    evidence = Ask.get_answer_evidence!(workspace.id, answer.answer_id)
+    assert evidence.evidence_state == "strong"
+    assert Enum.all?(evidence.citations, &(&1.citation_kind == "project_record"))
+  end
+
+  test "compare sources requires ready same-workspace sources and returns evidence-backed findings",
+       %{
+         workspace: workspace
+       } do
+    {:ok, earlier} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Launch Update 1",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" => "Support readiness is blocked. Mira owns the checklist."
+      })
+
+    {:ok, later} =
+      Sources.create_text_source(workspace.id, %{
+        "title" => "Launch Update 2",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" =>
+          "Support readiness is unblocked. Mira owns the checklist. Rina will staff support."
+      })
+
+    assert {:ok, comparison} =
+             Ask.compare_sources(workspace.id, [earlier.id, later.id], "What changed?")
+
+    assert comparison.evidence_state in ["strong", "mixed"]
+    assert Enum.any?(comparison.findings, &(&1.finding_type in ["added", "conflict"]))
+    assert Enum.any?(comparison.findings, &(&1.evidence != []))
+
+    {:ok, other_workspace} =
+      Workspaces.create_workspace(%{"name" => "Other Compare", "root_path" => "C:/tmp/compare"})
+
+    {:ok, other_source} =
+      Sources.create_text_source(other_workspace.id, %{
+        "title" => "Other Update",
+        "source_type" => "project_update",
+        "origin" => "manual_entry",
+        "text_content" => "Other workspace launch update."
+      })
+
+    assert {:error, :source_not_found} =
+             Ask.compare_sources(workspace.id, [earlier.id, other_source.id], "What changed?")
   end
 end

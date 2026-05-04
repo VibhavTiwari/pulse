@@ -38,6 +38,46 @@ defmodule PulseWeb.Api.DecisionController do
     end
   end
 
+  def lifecycle(conn, %{"workspace_id" => workspace_id, "id" => id} = params) do
+    decision = Decisions.get_decision!(workspace_id, id)
+
+    case Decisions.update_lifecycle(decision, params) do
+      {:ok, decision} ->
+        json(conn, JSONHelpers.decision(decision))
+
+      {:error, changeset} ->
+        conn |> put_status(:bad_request) |> json(%{errors: JSONHelpers.errors(changeset)})
+    end
+  end
+
+  def reverse(conn, %{"workspace_id" => workspace_id, "id" => id} = params) do
+    decision = Decisions.get_decision!(workspace_id, id)
+
+    case Decisions.reverse_decision(decision, params["reversal_reason"]) do
+      {:ok, decision} ->
+        json(conn, JSONHelpers.decision(decision))
+
+      {:error, changeset} ->
+        conn |> put_status(:bad_request) |> json(%{errors: JSONHelpers.errors(changeset)})
+    end
+  end
+
+  def supersede(conn, %{
+        "workspace_id" => workspace_id,
+        "id" => id,
+        "superseded_by_decision_id" => superseded_by_id
+      }) do
+    decision = Decisions.get_decision!(workspace_id, id)
+
+    case Decisions.supersede_decision(decision, superseded_by_id) do
+      {:ok, decision} ->
+        json(conn, JSONHelpers.decision(decision))
+
+      {:error, changeset} ->
+        conn |> put_status(:bad_request) |> json(%{errors: JSONHelpers.errors(changeset)})
+    end
+  end
+
   def accept(conn, %{"workspace_id" => workspace_id, "id" => id}) do
     decision = Decisions.get_decision!(workspace_id, id)
 

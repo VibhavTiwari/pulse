@@ -138,6 +138,7 @@ defmodule PulseWeb.Api.JSONHelpers do
       id: citation.id,
       workspace_id: citation.workspace_id,
       ask_message_id: citation.ask_message_id,
+      citation_kind: citation.citation_kind,
       source_id: citation.source_id,
       source_passage_id: citation.source_passage_id,
       source_title: if(Ecto.assoc_loaded?(citation.source), do: citation.source.title, else: nil),
@@ -149,6 +150,9 @@ defmodule PulseWeb.Api.JSONHelpers do
       quote: citation.evidence_text,
       location_hint: citation.location_hint,
       source_location: citation.location_hint,
+      supported_claim: citation.supported_claim,
+      project_record_type: citation.project_record_type,
+      project_record_id: citation.project_record_id,
       created_at: citation.inserted_at
     }
   end
@@ -176,6 +180,27 @@ defmodule PulseWeb.Api.JSONHelpers do
       decision_date: decision.decision_date,
       owner: decision.owner,
       status: decision.status,
+      decision_state: decision.decision_state,
+      superseded_by_decision_id: decision.superseded_by_decision_id,
+      superseded_by_decision:
+        if(
+          Ecto.assoc_loaded?(decision.superseded_by_decision) and
+            decision.superseded_by_decision,
+          do: %{
+            id: decision.superseded_by_decision.id,
+            title: decision.superseded_by_decision.title,
+            decision_state: decision.superseded_by_decision.decision_state
+          }
+        ),
+      superseded_decision_count:
+        if(Ecto.assoc_loaded?(decision.superseded_decisions),
+          do: length(decision.superseded_decisions),
+          else: 0
+        ),
+      reversal_reason: decision.reversal_reason,
+      rationale: decision.rationale,
+      tradeoffs: decision.tradeoffs,
+      alternatives_considered: decision.alternatives_considered,
       record_state: decision.record_state,
       source_origin: decision.source_origin,
       evidence_count: evidence_count(decision),
